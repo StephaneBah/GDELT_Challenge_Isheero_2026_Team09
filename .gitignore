@@ -1,0 +1,73 @@
+# Secrets & credentials
+.env
+.env.local
+*.env
+service_account*.json
+gcp-credentials*.json
+credentials.json
+*.key
+*.pem
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual environments
+venv/
+env/
+.venv/
+ENV/
+
+# Jupyter
+.ipynb_checkpoints/
+*.ipynb_checkpoints
+notebooks/*.ipynb_checkpoints/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Data — gitkeep only
+data/raw/*
+data/interim/*
+data/processed/*
+data/external/*
+data/models/*
+!data/**/.gitkeep
+!data/_metadata.json
+
+# Reports figures (only commit final exports)
+reports/figures/*
+!reports/figures/.gitkeep
+
+# Streamlit
+.streamlit/secrets.toml
+
+# Logs
+*.log
+logs/
+
+# OS
+Thumbs.db
