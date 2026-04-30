@@ -1,0 +1,72 @@
+# Manifest des questions de recherche — Bénin Risk Map
+#
+# Convention :
+#   - Chaque question correspond à un module `src/questions/<id>.py` exposant
+#     une variable `QUESTION` qui implémente le protocole `Question` (voir
+#     `src/questions/base.py`).
+#   - Le manifest sert de DOCUMENTATION et de NAVIGATION (README, dashboard).
+#     Il NE pilote PAS l'exécution : c'est le runner CLI qui importe et lance
+#     les modules. Lire `docs/04_architecture.md` pour la justification.
+#   - Une question peut être déclarée `status: draft` (placeholder, code pas
+#     encore écrit) tant que l'équipe n'a pas commencé l'analyse.
+#
+# Status acceptés :
+#   draft        — formulation actée, code à écrire
+#   in_progress  — code en développement, ne pas se baser dessus pour le pitch
+#   validated    — résultats validés et prêts pour le pitch / dashboard
+
+version: 1
+
+# Filtres globaux par défaut. Une question peut les surcharger dans son champ
+# `default_filters`. Le runner CLI peut aussi les surcharger en argument.
+defaults:
+  filters:
+    confidence: large
+    countries: ["BC"]
+
+# Liste des questions actives.
+# (Vide pour l'instant — l'équipe ajoutera Q1, Q2, Q3 quand elle commencera
+# l'analyse. Voir le template ci-dessous pour la structure d'une entrée.)
+questions: []
+
+# ---------------------------------------------------------------------------
+# Template d'une entrée de question (à copier/adapter quand on en ajoute une)
+# ---------------------------------------------------------------------------
+#
+# - id: Q1
+#   title: "Le terrain"
+#   public_title: "Risque sécuritaire départemental"
+#   owner: data_analyst
+#   status: draft
+#   public_audience:
+#     - ong_operationnelles
+#     - presse_securite
+#     - ambassades
+#   summary: |
+#     Distribution du risque sécuritaire opérationnel département par
+#     département au Bénin sur 12 mois, comparé aux régions frontalières
+#     du Burkina Faso et du Niger.
+#   default_filters:
+#     risk_domains: [securitaire]
+#     countries: [BC, UV, NG]
+#   primitives_used:
+#     analytics:
+#       - aggregate.by_admin1
+#       - aggregate.by_country
+#       - aggregate.time_series
+#     ml: []
+#     viz:
+#       - maps.choropleth_benin
+#       - timeseries.multi_line
+#   outputs:
+#     figures:
+#       - q1_choropleth_benin.html
+#       - q1_country_comparison.html
+#     tables:
+#       - q1_top_departments.csv
+#   insight_template: |
+#     Sur 12 mois, le Bénin a enregistré {n_incidents} incidents sécuritaires
+#     concentrés à {pct_top}% dans {top_dept_1} et {top_dept_2}. Cette
+#     intensité représente {pct_vs_burkina}% de celle observée au Burkina
+#     Faso, mais a généré {ratio_mentions:.1f} fois moins de mentions
+#     médiatiques mondiales.
