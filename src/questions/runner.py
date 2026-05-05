@@ -55,15 +55,24 @@ def list_questions() -> None:
         )
 
 
+def _resolve_module_name(question_id: str) -> str:
+    """Cherche le nom du module dans le manifest. Fallback : src.questions.<id>."""
+    manifest = load_manifest()
+    for q in manifest.get("questions", []):
+        if q.get("id", "").lower() == question_id.lower() and q.get("module"):
+            return q["module"]
+    return f"src.questions.{question_id.lower()}"
+
+
 def run_question(question_id: str, filters: Filters) -> Result:
     """Importe le module et exécute la question."""
-    module_name = f"src.questions.{question_id.lower()}"
+    module_name = _resolve_module_name(question_id)
     try:
         module = importlib.import_module(module_name)
     except ImportError as e:
         raise ImportError(
-            f"Module {module_name} introuvable. Créer le fichier "
-            f"src/questions/{question_id.lower()}.py exposant `QUESTION`."
+            f"Module {module_name} introuvable. Vérifier le champ `module` "
+            f"dans questions.yaml ou créer le fichier correspondant."
         ) from e
 
     if not hasattr(module, "QUESTION"):
