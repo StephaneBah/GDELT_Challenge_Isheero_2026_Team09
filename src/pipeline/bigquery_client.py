@@ -25,7 +25,14 @@ def init_client(
     project_id: Optional[str] = None,
     credentials_path: Optional[str] = None,
 ) -> bigquery.Client:
-    """Initialise un client BigQuery avec credentials explicites."""
+    """Initialise un client BigQuery.
+
+    Deux modes d'authentification supportés (cf. src/pipeline/auth.py) :
+    1. Service account (JSON) — si GOOGLE_APPLICATION_CREDENTIALS pointe
+       sur un fichier valide.
+    2. Application Default Credentials (ADC) — sinon, le client s'appuie
+       sur les credentials gérés par `gcloud auth application-default login`.
+    """
     project_id = project_id or GCP_PROJECT_ID
     if not project_id:
         raise ValueError(
@@ -33,13 +40,19 @@ def init_client(
         )
 
     path = setup_authentication(credentials_path)
-    creds = service_account.Credentials.from_service_account_file(path)
-    client = bigquery.Client(
-        project=project_id,
-        credentials=creds,
-        location=BQ_LOCATION,
-    )
-    logger.info("Client BigQuery initialisé (projet=%s)", project_id)
+    client_params = {"project": project_id, "location": BQ_LOCATION}
+
+    if path:
+        # Mode service account explicite
+        client_params["credentials"] = service_account.Credentials.from_service_account_file(path)
+        mode = "service account"
+    else:
+        # Mode ADC : le SDK Google détecte automatiquement les credentials
+        # depuis ~/.config/gcloud/application_default_credentials.json
+        mode = "ADC (gcloud auth application-default)"
+
+    client = bigquery.Client(**client_params)
+    logger.info("Client BigQuery initialisé (projet=%s, mode=%s)", project_id, mode)
     return client
 
 
