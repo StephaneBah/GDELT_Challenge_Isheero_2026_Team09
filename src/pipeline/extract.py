@@ -17,7 +17,7 @@ from pathlib import Path
 from src.config import (
     BQ_TABLE_EVENTS,
     BQ_TABLE_MENTIONS,
-    CAMEO_TARGETS,
+    CAMEO_TARGETS_ALL,
     FIPS_TARGETS,
     METADATA_FILE,
     PROJECT_ROOT,
@@ -40,7 +40,7 @@ def build_events_query() -> str:
     Filtre sur _PARTITIONTIME EN PREMIER pour préserver le quota (impératif).
     """
     fips = ", ".join(f"'{c}'" for c in FIPS_TARGETS)
-    cameo = ", ".join(f"'{c}'" for c in CAMEO_TARGETS)
+    cameo = ", ".join(f"'{c}'" for c in CAMEO_TARGETS_ALL)
     return f"""
         SELECT
           GLOBALEVENTID,
@@ -107,7 +107,7 @@ def write_metadata(events_path: Path, mentions_path: Path) -> None:
             "to": SNAPSHOT_DATE_TO.isoformat(),
         },
         "countries_fips": list(FIPS_TARGETS),
-        "countries_cameo": list(CAMEO_TARGETS),
+        "countries_cameo": list(CAMEO_TARGETS_ALL),
         "files": {
             "events": {
                 "path": str(events_path.relative_to(PROJECT_ROOT)),

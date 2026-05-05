@@ -1,11 +1,12 @@
 # Bénin Risk Map — commandes courantes
 # Usage : `make <target>`. Sur Windows sans `make`, voir le README.
 
-.PHONY: help install extract refresh clean-data process dashboard notebook question questions-list test
+.PHONY: help install discover-codes extract refresh clean-data process dashboard notebook question questions-list test
 
 help:
 	@echo "Cibles disponibles :"
 	@echo "  install         — installe les dépendances Python"
+	@echo "  discover-codes  — audit des codes CAMEO sur échantillon BigQuery (à lancer avant extract)"
 	@echo "  extract         — extraction one-shot 12 mois (BigQuery -> Parquet)"
 	@echo "  refresh         — refresh incrémental (events du jour)"
 	@echo "  process         — interim -> processed (agrégats prêts pour viz/ML)"
@@ -17,6 +18,9 @@ help:
 
 install:
 	pip install -r requirements.txt
+
+discover-codes:
+	python -m src.pipeline.discover_codes
 
 extract:
 	python -m src.pipeline.extract

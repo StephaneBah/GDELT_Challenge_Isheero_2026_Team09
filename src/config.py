@@ -40,12 +40,33 @@ FIPS_NIGER = "NG"
 FIPS_TARGETS = (FIPS_BENIN, FIPS_BURKINA, FIPS_NIGER)
 
 # Codes CAMEO acteurs (Actor1CountryCode / Actor2CountryCode)
-# À confirmer en day 1 sur un échantillon — la doc CAMEO n'est pas toujours alignée
-# sur ISO-3. Les valeurs ci-dessous sont les plus probables.
+#
+# La taxonomie CAMEO n'est PAS strictement ISO-3 et a évolué selon les
+# versions du codebook. Pour éviter une extraction silencieusement
+# incomplète, on liste pour chaque pays cible TOUTES les variantes
+# plausibles ; la clause IN du SQL utilise `CAMEO_TARGETS_ALL` qui
+# concatène toutes les variantes.
+#
+# Le script `src/pipeline/discover_codes.py` interroge BigQuery sur un
+# échantillon de 7 jours et liste les codes réellement présents — à
+# lancer une fois avant la grande extraction (`make discover-codes`).
 CAMEO_BENIN = "BEN"
-CAMEO_BURKINA = "BFO"  # CAMEO utilise BFO et non BFA pour Burkina Faso
-CAMEO_NIGER = "NGR"
+CAMEO_BURKINA = "BFA"  # ISO-3 ; certaines versions du codebook utilisent "BFO"
+CAMEO_NIGER = "NER"    # ISO-3 ; ne PAS confondre avec "NGR" qui désigne le Nigeria
 CAMEO_TARGETS = (CAMEO_BENIN, CAMEO_BURKINA, CAMEO_NIGER)
+
+# Variantes CAMEO connues, par pays. Utilisées en SQL pour capturer
+# tous les events indépendamment de l'évolution du codebook GDELT.
+CAMEO_VARIANTS: dict[str, tuple[str, ...]] = {
+    CAMEO_BENIN:   ("BEN",),
+    CAMEO_BURKINA: ("BFA", "BFO"),
+    CAMEO_NIGER:   ("NER",),  # NGR exclu : ambigu avec Nigeria
+}
+
+# Liste plate de toutes les variantes — utilisable directement dans IN(...).
+CAMEO_TARGETS_ALL: tuple[str, ...] = tuple(
+    code for variants in CAMEO_VARIANTS.values() for code in variants
+)
 
 # --- Départements béninois (admin1) ---
 # 12 départements officiels — utilisés pour la maille de référence
