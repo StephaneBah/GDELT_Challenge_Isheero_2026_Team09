@@ -22,6 +22,9 @@ from src.config import (
     PROCESSED_DIR,
 )
 
+# Sanity check : DEPT_ALIASES doit couvrir tous les départements officiels.
+# (Vérification en haut du module pour échouer tôt si config.py change.)
+
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger(__name__)
 
@@ -46,20 +49,47 @@ def add_confidence_tier(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
-def normalize_benin_admin1(df: pd.DataFrame) -> pd.DataFrame:
-    """Nettoie/normalise le nom de département pour les events béninois.
+# Aliases connus pour les variantes orthographiques GDELT/GeoNames.
+# Toute valeur dans le nom complet GDELT est lowercase-matched contre
+# l'une des variantes de chaque liste pour résoudre vers le nom officiel.
+DEPT_ALIASES: dict[str, list[str]] = {
+    "Alibori": ["alibori"],
+    "Atacora": ["atacora", "atakora"],            # GeoNames utilise souvent "Atakora"
+    "Atlantique": ["atlantique", "atlanique"],    # variante orthographique observée
+    "Borgou": ["borgou"],
+    "Collines": ["collines"],
+    "Couffo": ["couffo", "kouffo"],               # variante archaïque "Kouffo"
+    "Donga": ["donga"],
+    "Littoral": ["littoral"],
+    "Mono": ["mono"],
+    "Ouémé": ["ouémé", "oueme"],                  # accents souvent perdus dans GDELT
+    "Plateau": ["plateau"],
+    "Zou": ["zou"],
+}
 
-    GDELT renvoie `ActionGeo_FullName` du type "Atacora, Benin" ou parfois
-    juste "Benin". Cette fonction tente de matcher sur la liste officielle
-    des 12 départements. À auditer en day 1 sur un échantillon.
+assert set(DEPT_ALIASES.keys()) == set(BENIN_DEPARTMENTS), (
+    "DEPT_ALIASES doit lister exactement les départements officiels "
+    "(BENIN_DEPARTMENTS dans src/config.py). Synchroniser les deux."
+)
+
+
+def normalize_benin_admin1(df: pd.DataFrame) -> pd.DataFrame:
+    """Normalise le nom de département pour les events béninois.
+
+    GDELT renvoie `ActionGeo_FullName` du type "Atakora, Benin" ou parfois
+    juste "Benin". Le matching utilise une table d'aliases (cf. `DEPT_ALIASES`)
+    pour résoudre les variantes orthographiques courantes (Atakora->Atacora,
+    Oueme->Ouémé, Kouffo->Couffo, Atlanique->Atlantique).
     """
     df["dept_normalized"] = pd.NA
     benin_mask = df["ActionGeo_CountryCode"] == FIPS_BENIN
     full = df.loc[benin_mask, "ActionGeo_FullName"].fillna("").str.lower()
 
-    for dept in BENIN_DEPARTMENTS:
-        m = full.str.contains(dept.lower(), regex=False, na=False)
-        df.loc[benin_mask & m, "dept_normalized"] = dept
+    for dept, aliases in DEPT_ALIASES.items():
+        # `regex=False` pour que les caractères accentués soient pris au littéral
+        for alias in aliases:
+            m = full.str.contains(alias, regex=False, na=False)
+            df.loc[benin_mask & m, "dept_normalized"] = dept
     return df
 
 
