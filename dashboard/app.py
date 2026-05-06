@@ -5,7 +5,7 @@ import plotly.express as px
 import streamlit as st
 
 st.set_page_config(
-    page_title="Benin Media Monitor",
+    page_title="Observatoire mediatique du Benin",
     layout="wide",
     initial_sidebar_state="expanded",
 )
@@ -289,13 +289,13 @@ px.defaults.template = "simple_white"
 st.markdown(
     """
 <section class="hero">
-  <div class="hero-eyebrow">Benin Media Monitor</div>
-  <div class="hero-title">How the world frames Benin in 2025</div>
-  <div class="hero-subtitle">
-    Interactive report on perception, diplomacy, and attractiveness for investment,
-    built from GDELT media coverage. Use the filters to stay focused on the
-    attractivite angle or explore the full narrative.
-  </div>
+    <div class="hero-eyebrow">Observatoire mediatique</div>
+    <div class="hero-title">Comment le monde raconte le Benin en 2025</div>
+    <div class="hero-subtitle">
+        Article interactif sur la perception, la diplomatie et l'attractivite economique,
+        base sur la couverture mediatique GDELT. Utilisez les filtres pour
+        garder le focus attractivite ou explorer la couverture complete.
+    </div>
 </section>
 """,
     unsafe_allow_html=True,
@@ -304,28 +304,27 @@ st.markdown(
 st.markdown(
     """
 <div class="story-block">
-  Perceptions of a country are built by facts, collective narratives, and media
-  influence. In this challenge we track how global media talk about Benin in 2025
-  and translate coverage into insight for journalists, researchers, and decision
-  makers. Three axes guide the story: tone and sentiment, key themes driving
-  attractiveness, and the geography of media attention.
+    Les perceptions d'un pays se construisent par les faits, les imaginaires
+    collectifs et l'influence des medias. Ici, l'objectif est d'aller au-dela
+    des chiffres pour produire des insights. Le dashboard privilegie la lecture
+    et l'interpretation des signaux qui affectent l'image du Benin.
 </div>
 """,
     unsafe_allow_html=True,
 )
 
 with st.sidebar:
-    st.markdown("## Filters")
+    st.markdown("## Filtres")
     focus_mode = st.radio(
-        "Scope",
-        ["Attractivite focus", "All coverage"],
+        "Portee",
+        ["Focus attractivite", "Couverture complete"],
         index=0,
     )
     if df["event_date"].notna().any():
         min_date = df["event_date"].min().date()
         max_date = df["event_date"].max().date()
         date_range = st.slider(
-            "Date range",
+            "Periode",
             min_value=min_date,
             max_value=max_date,
             value=(min_date, max_date),
@@ -336,32 +335,32 @@ with st.sidebar:
 
     root_options = sorted(df["event_root"].dropna().unique().tolist())
     default_roots = [r for r in root_options if r.upper() in ATTRACTIVITY_ROOTS]
-    if focus_mode == "All coverage" and root_options:
+    if focus_mode == "Couverture complete" and root_options:
         default_roots = root_options
 
     selected_roots = st.multiselect(
-        "Event themes (EventRoot)",
+        "Themes (EventRoot)",
         options=root_options,
         default=default_roots,
     )
 
     origin_options = sorted(df["source_origin"].dropna().unique().tolist())
     selected_origins = st.multiselect(
-        "Source origin",
+        "Origine des sources",
         options=origin_options,
         default=origin_options,
     )
 
     actor_options = sorted(df["actor1_country"].dropna().unique().tolist())
     selected_actor = st.multiselect(
-        "Actor1 country (initiator)",
+        "Pays Actor1 (initiateur)",
         options=actor_options,
         default=[],
-        help="Leave empty to keep all.",
+        help="Laisser vide pour garder tout.",
     )
 
-    only_business = st.checkbox("Only business / investment actors", value=False)
-    hide_unknown = st.checkbox("Hide Unknown actors", value=False)
+    only_business = st.checkbox("Acteurs business/investissement seulement", value=False)
+    hide_unknown = st.checkbox("Masquer Unknown", value=False)
 
     tone_range = None
     if df["AvgTone"].notna().any():
@@ -369,7 +368,7 @@ with st.sidebar:
         tone_max = float(df["AvgTone"].max())
         if tone_min < tone_max:
             tone_range = st.slider(
-                "AvgTone range",
+                "Plage AvgTone",
                 min_value=round(tone_min, 2),
                 max_value=round(tone_max, 2),
                 value=(round(tone_min, 2), round(tone_max, 2)),
@@ -383,7 +382,7 @@ with st.sidebar:
         gold_max = float(df["GoldsteinScale"].max())
         if gold_min < gold_max:
             gold_range = st.slider(
-                "GoldsteinScale range",
+                "Plage GoldsteinScale",
                 min_value=round(gold_min, 2),
                 max_value=round(gold_max, 2),
                 value=(round(gold_min, 2), round(gold_max, 2)),
@@ -392,7 +391,7 @@ with st.sidebar:
             gold_range = (round(gold_min, 2), round(gold_max, 2))
 
 df_view = df.copy()
-if focus_mode == "Attractivite focus":
+if focus_mode == "Focus attractivite":
     df_view = df_view[(df_view["event_root"].str.upper().isin(ATTRACTIVITY_ROOTS)) | df_view["is_biz"]]
 
 if date_range and "event_date" in df_view.columns:
@@ -424,7 +423,7 @@ if gold_range:
     df_view = df_view[df_view["GoldsteinScale"].between(gold_range[0], gold_range[1])]
 
 if df_view.empty:
-    st.warning("No rows match the current filters. Try relaxing the filters.")
+    st.warning("Aucune ligne ne correspond aux filtres. Elargissez les filtres.")
     st.stop()
 
 avg_tone = safe_mean(df_view["AvgTone"])
@@ -432,29 +431,68 @@ avg_gold = safe_mean(df_view["GoldsteinScale"])
 biz_share = float(df_view["is_biz"].mean()) if "is_biz" in df_view.columns else 0.0
 coop_share = float((df_view["quad_label"].str.contains("Cooperation", na=False)).mean())
 
-kpi_cols = st.columns(4)
+kpi_cols = st.columns(5)
 with kpi_cols[0]:
-    metric_card("Events", f"{len(df_view):,}", "Filtered coverage")
+    metric_card("Evenements", f"{len(df_view):,}", "Couverture filtree")
 with kpi_cols[1]:
-    metric_card("AvgTone", f"{avg_tone:.2f}", "Media sentiment")
+    metric_card("AvgTone", f"{avg_tone:.2f}", "Sentiment media")
 with kpi_cols[2]:
-    metric_card("Goldstein", f"{avg_gold:.2f}", "Stability signal")
+    metric_card("Goldstein", f"{avg_gold:.2f}", "Signal de stabilite")
 with kpi_cols[3]:
-    metric_card("Business share", f"{biz_share:.0%}", "Investment actors")
+    metric_card("Part cooperation", f"{coop_share:.0%}", "QuadClass 1-2")
+with kpi_cols[4]:
+    metric_card("Part business", f"{biz_share:.0%}", "Acteurs investissement")
 
 st.markdown(
     """
 <div class="callout">
-AvgTone captures the sentiment of media coverage, while GoldsteinScale reflects
-the implied geopolitical stability of events. A negative tone with a positive
-Goldstein score often signals critical coverage of actions that remain stable
-in practice.
+AvgTone mesure la tonalite des articles, tandis que GoldsteinScale estime
+l'impact theorique sur la stabilite geopolitique. Un ton negatif avec un
+Goldstein positif signale souvent une couverture critique d'actions stables.
 </div>
 """,
     unsafe_allow_html=True,
 )
 
-st.markdown("<div class='section-title'>Coverage pulse</div>", unsafe_allow_html=True)
+st.markdown("<div class='section-title'>Cooperation vs conflit</div>", unsafe_allow_html=True)
+coop_count = int(df_view["quad_label"].str.contains("Cooperation", na=False).sum())
+conflict_count = int(df_view["quad_label"].str.contains("Conflict", na=False).sum())
+other_count = max(len(df_view) - coop_count - conflict_count, 0)
+quad_summary = pd.DataFrame(
+    {
+        "type": ["Cooperation", "Conflit", "Autre/Unknown"],
+        "count": [coop_count, conflict_count, other_count],
+    }
+)
+left, right = st.columns([1, 1])
+with left:
+    fig = px.pie(
+        quad_summary,
+        names="type",
+        values="count",
+        hole=0.55,
+        color="type",
+        color_discrete_map={
+            "Cooperation": "#1e6f78",
+            "Conflit": "#d18f2b",
+            "Autre/Unknown": "#7b7b7b",
+        },
+        title="Part cooperation vs conflit",
+    )
+    fig.update_layout(height=320)
+    st.plotly_chart(fig, use_container_width=True)
+with right:
+    st.markdown(
+        f"""
+<div class="story-block">
+  La cooperation represente <strong>{coop_share:.0%}</strong> des evenements
+  filtres. Ce signal est central pour lire la diplomatie et l'attractivite du Benin.
+</div>
+""",
+        unsafe_allow_html=True,
+    )
+
+st.markdown("<div class='section-title'>Pulse de couverture</div>", unsafe_allow_html=True)
 monthly = build_monthly(df_view)
 if not monthly.empty:
     left, right = st.columns(2)
@@ -463,11 +501,11 @@ if not monthly.empty:
             monthly,
             x="month",
             y="count",
-            title="Monthly coverage volume",
+            title="Volume de couverture mensuel",
             color="count",
             color_continuous_scale=["#f1d9b1", "#d18f2b"],
         )
-        fig.update_layout(height=360, xaxis_title="", yaxis_title="Events")
+        fig.update_layout(height=360, xaxis_title="", yaxis_title="Evenements")
         st.plotly_chart(fig, use_container_width=True)
     with right:
         fig = px.line(
@@ -475,16 +513,16 @@ if not monthly.empty:
             x="month",
             y=["avg_tone", "avg_gold"],
             markers=True,
-            title="Tone and stability trend",
-            color_discrete_sequence=["#1e6f78", "#0d6b3f"],
+            title="Tonalite et stabilite",
+            color_discrete_map={"avg_tone": "#d18f2b", "avg_gold": "#1e6f78"},
         )
         fig.update_layout(height=360, xaxis_title="", yaxis_title="Score")
         st.plotly_chart(fig, use_container_width=True)
 
-st.markdown("<div class='section-title'>Attractivite drivers</div>", unsafe_allow_html=True)
+st.markdown("<div class='section-title'>Leviers d'attractivite</div>", unsafe_allow_html=True)
 root_summary = build_root_summary(df_view)
 attr_summary = root_summary.copy()
-if focus_mode == "Attractivite focus":
+if focus_mode == "Focus attractivite":
     attr_summary = attr_summary[attr_summary["event_root"].str.upper().isin(ATTRACTIVITY_ROOTS)]
 
 left, right = st.columns([1.1, 1])
@@ -495,9 +533,9 @@ with left:
         y="count",
         color="avg_tone",
         color_continuous_scale=["#d18f2b", "#1e6f78"],
-        title="Themes supporting attractiveness",
+        title="Themes qui soutiennent l'attractivite",
     )
-    fig.update_layout(height=360, xaxis_title="EventRoot", yaxis_title="Events")
+    fig.update_layout(height=360, xaxis_title="EventRoot", yaxis_title="Evenements")
     st.plotly_chart(fig, use_container_width=True)
 with right:
     fig = px.scatter(
@@ -507,7 +545,7 @@ with right:
         size="count",
         color="count",
         hover_name="event_root",
-        title="Perception vs stability (EventRoot)",
+        title="Perception vs stabilite (EventRoot)",
         color_continuous_scale="Teal",
     )
     fig.update_layout(height=360)
@@ -527,14 +565,17 @@ if not biz_df.empty:
         y="count",
         color="avg_tone",
         color_continuous_scale="RdYlGn",
-        title="Business and investment attention (Actor1)",
+        title="Attention business et investissement (Actor1)",
     )
-    fig.update_layout(height=340, xaxis_title="Actor1 country", yaxis_title="Events")
+    fig.update_layout(height=340, xaxis_title="Pays Actor1", yaxis_title="Evenements")
     st.plotly_chart(fig, use_container_width=True)
 
-st.markdown("<div class='section-title'>Who talks about Benin</div>", unsafe_allow_html=True)
+st.markdown("<div class='section-title'>Diplomatie et partenariats</div>", unsafe_allow_html=True)
+partner_pool = df_view[df_view["event_root"].str.upper().isin(ATTRACTIVITY_ROOTS)]
+if partner_pool.empty:
+    partner_pool = df_view
 country_stats = (
-    df_view[df_view["actor1_country"].str.lower() != "benin"]
+    partner_pool[partner_pool["actor1_country"].str.lower() != "benin"]
     .groupby("actor1_country", as_index=False)
     .agg(count=("GLOBALEVENTID", "count"), avg_tone=("AvgTone", "mean"))
     .sort_values("count", ascending=False)
@@ -546,9 +587,9 @@ fig = px.bar(
     y="count",
     color="avg_tone",
     color_continuous_scale="RdYlGn",
-    title="Top foreign actors and their tone",
+    title="Top partenaires (Actor1) sur les themes de cooperation",
 )
-fig.update_layout(height=360, xaxis_title="Actor1 country", yaxis_title="Events")
+fig.update_layout(height=360, xaxis_title="Pays partenaire", yaxis_title="Evenements")
 st.plotly_chart(fig, use_container_width=True)
 
 origin_stats = (
@@ -561,13 +602,13 @@ fig = px.bar(
     x="source_origin",
     y="count",
     color="source_origin",
-    title="Media origin distribution",
+    title="Repartition par origine des sources",
     color_discrete_sequence=["#1e6f78", "#d18f2b", "#0d6b3f", "#7b7b7b"],
 )
-fig.update_layout(height=320, xaxis_title="Source origin", yaxis_title="Articles")
+fig.update_layout(height=320, xaxis_title="Origine", yaxis_title="Articles")
 st.plotly_chart(fig, use_container_width=True)
 
-st.markdown("<div class='section-title'>Geography of events</div>", unsafe_allow_html=True)
+st.markdown("<div class='section-title'>Geographie des evenements</div>", unsafe_allow_html=True)
 geo = df_view[["ActionGeo_Lat", "ActionGeo_Long", "event_root"]].dropna()
 geo = geo.rename(columns={"ActionGeo_Lat": "lat", "ActionGeo_Long": "lon"})
 geo = geo.sample(min(len(geo), 5000), random_state=7)
@@ -579,23 +620,43 @@ if not geo.empty:
         color="event_root",
         zoom=5,
         height=420,
-        title="Event locations (sample)",
+        title="Localisation des evenements (echantillon)",
     )
     fig.update_layout(mapbox_style="open-street-map", margin=dict(l=0, r=0, t=40, b=0))
     st.plotly_chart(fig, use_container_width=True)
 
 top_event = root_summary["event_root"].iloc[0] if not root_summary.empty else "Unknown"
 top_actor = country_stats["actor1_country"].iloc[0] if not country_stats.empty else "Unknown"
+peak_month = "Unknown"
+if not monthly.empty:
+        peak_month = monthly.loc[monthly["count"].idxmax(), "month"].strftime("%b %Y")
 
-st.markdown("<div class='section-title'>Executive takeaways</div>", unsafe_allow_html=True)
+st.markdown("<div class='section-title'>Glossaire rapide</div>", unsafe_allow_html=True)
+st.markdown(
+        """
+<div class="story-block">
+    <ul>
+        <li><strong>EventRoot (EventRootCode)</strong> : type d'action principal (partenariat, aide, diplomatie).</li>
+        <li><strong>QuadClass</strong> : cooperation vs conflit (4 categories).</li>
+        <li><strong>AvgTone</strong> : tonalite moyenne des articles.</li>
+        <li><strong>GoldsteinScale</strong> : impact theorique sur la stabilite geopolitique.</li>
+        <li><strong>ActionGeo</strong> : lieu geocode de l'evenement.</li>
+    </ul>
+</div>
+""",
+        unsafe_allow_html=True,
+)
+
+st.markdown("<div class='section-title'>Insights a retenir</div>", unsafe_allow_html=True)
 st.markdown(
     f"""
 <div class="callout">
   <ul>
-    <li>Top theme by volume: <strong>{top_event}</strong>.</li>
-    <li>Most visible foreign actor: <strong>{top_actor}</strong>.</li>
-    <li>Business coded events represent <strong>{biz_share:.0%}</strong> of the filtered coverage.</li>
-    <li>Use the filters to isolate diplomacy or investment-driven narratives.</li>
+        <li>Top theme par volume: <strong>{top_event}</strong>.</li>
+        <li>Partenaire le plus visible: <strong>{top_actor}</strong>.</li>
+        <li>Part business/investissement: <strong>{biz_share:.0%}</strong> des evenements filtres.</li>
+        <li>Le mois le plus intense est <strong>{peak_month}</strong> (volume de couverture maximum).</li>
+        <li>Le concours attend des conclusions: utilisez les filtres pour isoler des signaux et en tirer des faits inedits.</li>
   </ul>
 </div>
 """,
