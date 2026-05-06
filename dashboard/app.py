@@ -297,6 +297,20 @@ def tab_explorer(events: pd.DataFrame, stories: pd.DataFrame, filters: Filters) 
 def tab_methodology(manifest: dict) -> None:
     st.subheader("Méthodologie")
 
+    st.warning(
+        "**Note méthodologique importante — biais Benin City**\n\n"
+        "GDELT confond fréquemment « Benin » (le pays) avec **Benin City** "
+        "(capitale de l'Edo State, Nigeria). Ce biais introduit un volume important "
+        "d'articles nigérians sans rapport avec le Bénin.\n\n"
+        "**Notre solution :** un pipeline de nettoyage en deux filtres "
+        "(voir `notebooks/GDELT_Benin_Nettoyage.ipynb`) réduit le dataset de "
+        "**34 106 à 22 026 événements** avec un bruit résiduel estimé à **< 0,3 %**. "
+        "Ce nettoyage est entièrement reproductible et documenté pas à pas.\n\n"
+        "La couverture reflète un regard majoritairement extérieur sur le Bénin, "
+        "dominé par les médias africains régionaux.",
+        icon="⚠️",
+    )
+
     st.markdown(
         """
         ### Source de données
@@ -316,6 +330,7 @@ def tab_methodology(manifest: dict) -> None:
         ### Limites GDELT documentées
         | Limite | Traitement |
         |---|---|
+        | **Confusion Benin / Benin City Nigeria** | Pipeline de nettoyage 2 filtres — 34 106 → 22 026 events, bruit < 0,3 % |
         | Géocodage infranational imprécis (Hammond & Weidmann 2014) | Audit sur échantillon, fallback ADM1 |
         | Sur-comptage d'events | Pondération `NumMentions`, clustering stories |
         | Biais anglophone du crawl | Mention explicite, validation croisée multilingue |

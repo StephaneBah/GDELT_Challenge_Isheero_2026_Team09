@@ -118,6 +118,14 @@ streamlit run dashboard/app.py
 Voir [docs/04_architecture.md](docs/04_architecture.md) pour les conventions
 détaillées.
 
+## Note méthodologique — biais Benin City
+
+> ⚠️ **Problème connu de GDELT :** la base de données confond fréquemment « Benin » (le pays) avec **Benin City** (capitale de l'Edo State, Nigeria). Ce biais introduit un volume important d'articles nigérians sans rapport avec le Bénin.
+>
+> **Notre solution :** un pipeline de nettoyage en deux filtres (voir [`notebooks/GDELT_Benin_Nettoyage.ipynb`](notebooks/GDELT_Benin_Nettoyage.ipynb)) réduit le dataset de **34 106 à 22 026 événements** avec un bruit résiduel estimé à **< 0,3 %**. Ce nettoyage est entièrement reproductible et documenté pas à pas.
+>
+> La couverture reflète un regard majoritairement extérieur sur le Bénin, dominé par les médias africains régionaux.
+
 ## Snapshot des données
 
 L'extraction est figée sur l'**année calendaire 2025** (1er janvier → 31 décembre 2025), conformément à la consigne du hackathon. La date d'exécution exacte de l'extraction est inscrite dans `data/_metadata.json` au moment du snapshot.
