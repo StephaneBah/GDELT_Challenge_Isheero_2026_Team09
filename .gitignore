@@ -53,6 +53,7 @@ notebooks/*.ipynb_checkpoints/
 data/raw/*
 data/interim/*
 data/processed/*
+!data/processed/*.parquet
 data/external/*
 data/models/*
 !data/**/.gitkeep
