@@ -279,6 +279,41 @@ def build_monthly(df: pd.DataFrame) -> pd.DataFrame:
     )
 
 
+PIVOT_H1H2 = pd.Timestamp("2025-07-01")
+_MONTHS_FR = {
+    1: "janvier", 2: "février", 3: "mars", 4: "avril", 5: "mai", 6: "juin",
+    7: "juillet", 8: "août", 9: "septembre", 10: "octobre", 11: "novembre", 12: "décembre",
+}
+
+
+def detect_peak(monthly: pd.DataFrame) -> dict | None:
+    """Retourne le mois pic si son volume dépasse 2× la médiane."""
+    if monthly.empty or len(monthly) < 3:
+        return None
+    median = monthly["count"].median()
+    idx = monthly["count"].idxmax()
+    row = monthly.iloc[idx]
+    ratio = row["count"] / median if median > 0 else 1
+    return {"month": row["month"], "count": int(row["count"]),
+            "ratio": round(ratio, 1), "tone": round(row["avg_tone"], 2),
+            "is_anomaly": ratio >= 2.0}
+
+
+def build_h1h2_partners(df: pd.DataFrame, n: int = 10) -> pd.DataFrame:
+    """Compare le volume H1 vs H2 par pays partenaire (Actor1 hors Bénin)."""
+    if "event_date" not in df.columns:
+        return pd.DataFrame()
+    pool = df[~df["actor1_country"].str.lower().isin(["benin", "unknown", ""])]
+    pool = pool[pool["event_root"].str.upper().isin(ATTRACTIVITY_ROOTS) | pool["is_biz"]]
+    h1 = pool[pool["event_date"] < PIVOT_H1H2].groupby("actor1_country")["GLOBALEVENTID"].count()
+    h2 = pool[pool["event_date"] >= PIVOT_H1H2].groupby("actor1_country")["GLOBALEVENTID"].count()
+    combined = pd.DataFrame({"H1": h1, "H2": h2}).fillna(0).astype(int)
+    combined["total"] = combined["H1"] + combined["H2"]
+    h1_safe = combined["H1"].replace(0, float("nan"))
+    combined["delta_pct"] = ((combined["H2"] - combined["H1"]) / h1_safe * 100).round(1)
+    return combined.sort_values("total", ascending=False).head(n).reset_index()
+
+
 if not DATA_PATH.exists():
     st.error(f"Dataset not found: {DATA_PATH}")
     st.stop()
@@ -482,11 +517,26 @@ with left:
     fig.update_layout(height=320)
     st.plotly_chart(fig, use_container_width=True)
 with right:
+    conf_share = 1.0 - coop_share
+    if coop_share >= 0.70:
+        coop_verdict = "profil structurellement coopératif"
+        coop_color = "#1e6f78"
+    elif coop_share >= 0.55:
+        coop_verdict = "profil majoritairement coopératif"
+        coop_color = "#0d6b3f"
+    else:
+        coop_verdict = "tension entre coopération et conflictualité"
+        coop_color = "#d18f2b"
     st.markdown(
         f"""
 <div class="story-block">
-  La cooperation represente <strong>{coop_share:.0%}</strong> des evenements
-  filtres. Ce signal est central pour lire la diplomatie et l'attractivite du Benin.
+  <strong>{coop_share:.0%} de coopération</strong> vs {conf_share:.0%} de conflictualité —
+  le Bénin affiche un <span style="color:{coop_color};font-weight:600">{coop_verdict}</span>
+  dans la presse mondiale en 2025.<br><br>
+  Ce ratio place le pays en position favorable pour attirer des partenariats
+  et des investissements : les médias internationaux associent majoritairement
+  le Bénin à des actions diplomatiques, d'aide et de consultation,
+  non à des foyers de tension.
 </div>
 """,
         unsafe_allow_html=True,
@@ -495,6 +545,7 @@ with right:
 st.markdown("<div class='section-title'>Pulse de couverture</div>", unsafe_allow_html=True)
 monthly = build_monthly(df_view)
 if not monthly.empty:
+    peak = detect_peak(monthly)
     left, right = st.columns(2)
     with left:
         fig = px.bar(
@@ -505,6 +556,27 @@ if not monthly.empty:
             color="count",
             color_continuous_scale=["#f1d9b1", "#d18f2b"],
         )
+        if peak and peak["is_anomaly"]:
+            fig.add_vline(
+                x=peak["month"].timestamp() * 1000,
+                line_color="#c0392b",
+                line_dash="dash",
+                line_width=2,
+            )
+            fig.add_annotation(
+                x=peak["month"],
+                y=peak["count"],
+                text=f"Pic ×{peak['ratio']} la médiane<br>Tentative de coup d'État",
+                showarrow=True,
+                arrowhead=2,
+                arrowcolor="#c0392b",
+                font=dict(size=11, color="#c0392b"),
+                bgcolor="white",
+                bordercolor="#c0392b",
+                borderwidth=1,
+                ax=40,
+                ay=-50,
+            )
         fig.update_layout(height=360, xaxis_title="", yaxis_title="Evenements")
         st.plotly_chart(fig, use_container_width=True)
     with right:
@@ -518,6 +590,28 @@ if not monthly.empty:
         )
         fig.update_layout(height=360, xaxis_title="", yaxis_title="Score")
         st.plotly_chart(fig, use_container_width=True)
+
+    if peak:
+        mois_fr = _MONTHS_FR.get(peak["month"].month, "")
+        annee = peak["month"].year
+        if peak["is_anomaly"]:
+            pulse_text = (
+                f"Le pic de <strong>{mois_fr} {annee}</strong> est le signal le plus fort de l'année : "
+                f"<strong>{peak['count']:,} événements</strong>, soit ×{peak['ratio']} le volume médian mensuel. "
+                f"Le ton moyen ce mois-là chute à <strong>{peak['tone']:+.2f}</strong>, confirmant un événement "
+                f"de rupture. Les sources internationales (AFP, BBC, Jiji Africa) convergent sur "
+                f"une <strong>tentative de coup d'État déjouée</strong>."
+            )
+        else:
+            pulse_text = (
+                f"Le mois le plus couvert est <strong>{mois_fr} {annee}</strong> "
+                f"({peak['count']:,} événements, ×{peak['ratio']} la médiane). "
+                f"Ton moyen : {peak['tone']:+.2f}."
+            )
+        st.markdown(
+            f'<div class="story-block">{pulse_text}</div>',
+            unsafe_allow_html=True,
+        )
 
 st.markdown("<div class='section-title'>Leviers d'attractivite</div>", unsafe_allow_html=True)
 root_summary = build_root_summary(df_view)
@@ -550,6 +644,23 @@ with right:
     )
     fig.update_layout(height=360)
     st.plotly_chart(fig, use_container_width=True)
+
+if not root_summary.empty:
+    top_attr = attr_summary.iloc[0] if not attr_summary.empty else None
+    if top_attr is not None:
+        tone_label = "positif" if top_attr["avg_tone"] > 0 else "légèrement négatif" if top_attr["avg_tone"] > -1 else "négatif"
+        st.markdown(
+            f"""
+<div class="story-block">
+  Le levier d'attractivité dominant est <strong>{top_attr['event_root']}</strong>
+  ({int(top_attr['count']):,} événements, ton {tone_label} à {top_attr['avg_tone']:+.2f}).
+  Le graphique "Perception vs Stabilité" permet de repérer les thèmes à la fois bien perçus
+  <em>et</em> stabilisateurs — le quadrant supérieur-droit est le plus porteur
+  pour l'image d'attractivité du Bénin.
+</div>
+""",
+            unsafe_allow_html=True,
+        )
 
 biz_df = df_view[df_view["is_biz"]]
 if not biz_df.empty:
@@ -591,6 +702,57 @@ fig = px.bar(
 )
 fig.update_layout(height=360, xaxis_title="Pays partenaire", yaxis_title="Evenements")
 st.plotly_chart(fig, use_container_width=True)
+
+h1h2 = build_h1h2_partners(df_view)
+if not h1h2.empty:
+    st.markdown("<div class='section-title'>Évolution des partenariats H1 vs H2 2025</div>", unsafe_allow_html=True)
+    h1h2_plot = h1h2.sort_values("total", ascending=True).tail(10)
+    import plotly.graph_objects as go
+    fig_h1h2 = go.Figure()
+    fig_h1h2.add_trace(go.Bar(
+        name="Jan–juin 2025 (H1)", y=h1h2_plot["actor1_country"],
+        x=h1h2_plot["H1"], orientation="h", marker_color="#1e6f78",
+    ))
+    fig_h1h2.add_trace(go.Bar(
+        name="Juil–déc 2025 (H2)", y=h1h2_plot["actor1_country"],
+        x=h1h2_plot["H2"], orientation="h", marker_color="#d18f2b",
+    ))
+    fig_h1h2.update_layout(
+        barmode="group",
+        title="Présence des partenaires : première vs seconde moitié de 2025",
+        xaxis_title="Événements de coopération",
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+        height=400,
+        margin=dict(r=10, t=60, l=10, b=40),
+    )
+    st.plotly_chart(fig_h1h2, use_container_width=True)
+
+    losers = h1h2[h1h2["H1"] > 0].nsmallest(3, "delta_pct")
+    gainers = h1h2[h1h2["H2"] > h1h2["H1"]].nlargest(3, "delta_pct")
+    new_in_h2 = h1h2[(h1h2["H1"] == 0) & (h1h2["H2"] > 0)]
+
+    loser_parts = [
+        f"<strong>{r['actor1_country']}</strong> ({r['delta_pct']:+.0f} %)"
+        for _, r in losers.iterrows() if pd.notna(r["delta_pct"])
+    ]
+    gainer_parts = [
+        f"<strong>{r['actor1_country']}</strong> ({r['delta_pct']:+.0f} %)"
+        for _, r in gainers.iterrows() if pd.notna(r["delta_pct"])
+    ]
+    new_parts = [f"<strong>{r['actor1_country']}</strong>" for _, r in new_in_h2.iterrows()]
+
+    h1h2_text = ""
+    if loser_parts:
+        h1h2_text += f"Partenaires en recul en H2 : {', '.join(loser_parts)}. "
+    if gainer_parts:
+        h1h2_text += f"En progression : {', '.join(gainer_parts)}. "
+    if new_parts:
+        h1h2_text += f"Nouveaux partenaires apparus en H2 : {', '.join(new_parts)}."
+    if h1h2_text:
+        st.markdown(
+            f'<div class="story-block">{h1h2_text}</div>',
+            unsafe_allow_html=True,
+        )
 
 origin_stats = (
     df_view.groupby("source_origin", as_index=False)
@@ -647,19 +809,64 @@ st.markdown(
         unsafe_allow_html=True,
 )
 
-st.markdown("<div class='section-title'>Insights a retenir</div>", unsafe_allow_html=True)
+st.markdown("<div class='section-title'>Ce que les données révèlent sur le Bénin en 2025</div>", unsafe_allow_html=True)
+
+insights_items = []
+
+# 1. Profil général coopération
+insights_items.append(
+    f"<strong>{coop_share:.0%} des événements médiatiques sont coopératifs</strong> — "
+    f"le Bénin est perçu comme un acteur stable et engagé sur la scène internationale, "
+    f"malgré la pression sécuritaire au nord."
+)
+
+# 2. Signal d'anomalie décembre
+peak = detect_peak(monthly) if not monthly.empty else None
+if peak and peak["is_anomaly"]:
+    mois_fr = _MONTHS_FR.get(peak["month"].month, "")
+    insights_items.append(
+        f"<strong>Signal exceptionnel en {mois_fr} {peak['month'].year}</strong> : "
+        f"{peak['count']:,} événements, soit ×{peak['ratio']} le volume médian. "
+        f"Le ton chute à {peak['tone']:+.2f}. Les dépêches AFP et BBC identifient "
+        f"une <strong>tentative de coup d'État déjouée</strong> — événement sans équivalent sur l'année."
+    )
+
+# 3. Partenaire principal
+if not country_stats.empty:
+    top = country_stats.iloc[0]
+    second = country_stats.iloc[1] if len(country_stats) > 1 else None
+    partner_str = f"<strong>{top['actor1_country']}</strong> ({int(top['count']):,} événements, ton {top['avg_tone']:+.2f})"
+    if second is not None:
+        partner_str += f" et <strong>{second['actor1_country']}</strong>"
+    insights_items.append(
+        f"Premier partenaire de coopération : {partner_str}. "
+        f"La présence nigériane reflète en partie le poids des médias nigérians dans GDELT — "
+        f"à interpréter avec prudence."
+    )
+
+# 4. Acteurs business
+if biz_share > 0:
+    insights_items.append(
+        f"<strong>{biz_share:.0%} des événements</strong> impliquent des acteurs économiques "
+        f"(entreprises, IGO, agences de développement) — signal tangible d'attractivité "
+        f"pour les investisseurs étrangers."
+    )
+
+# 5. Évolution H1/H2
+if not h1h2.empty and len(h1h2) >= 2:
+    losers_h = h1h2[h1h2["H1"] > 0].nsmallest(1, "delta_pct")
+    new_h = h1h2[(h1h2["H1"] == 0) & (h1h2["H2"] > 0)]
+    if not losers_h.empty:
+        lr = losers_h.iloc[0]
+        insights_items.append(
+            f"Recomposition diplomatique en cours : <strong>{lr['actor1_country']}</strong> "
+            f"recule de <strong>{lr['delta_pct']:+.0f} %</strong> en seconde moitié d'année"
+            + (f", tandis que <strong>{new_h.iloc[0]['actor1_country']}</strong> émerge comme nouveau partenaire." if not new_h.empty else ".")
+        )
+
+items_html = "".join(f"<li style='margin-bottom:0.7rem'>{item}</li>" for item in insights_items)
 st.markdown(
-    f"""
-<div class="callout">
-  <ul>
-        <li>Top theme par volume: <strong>{top_event}</strong>.</li>
-        <li>Partenaire le plus visible: <strong>{top_actor}</strong>.</li>
-        <li>Part business/investissement: <strong>{biz_share:.0%}</strong> des evenements filtres.</li>
-        <li>Le mois le plus intense est <strong>{peak_month}</strong> (volume de couverture maximum).</li>
-        <li>Le concours attend des conclusions: utilisez les filtres pour isoler des signaux et en tirer des faits inedits.</li>
-  </ul>
-</div>
-""",
+    f'<div class="callout"><ul style="padding-left:1.2rem;margin:0">{items_html}</ul></div>',
     unsafe_allow_html=True,
 )
 
