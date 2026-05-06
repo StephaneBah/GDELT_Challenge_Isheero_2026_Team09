@@ -202,9 +202,9 @@ class _Q2:
         if worst_rupture and worst_rupture["delta"] < -0.5:
             negative_rupture_str = (
                 f"La rupture la plus significative survient le {_fmt_date(worst_rupture['breakpoint'])} "
-                f"({worst_rupture['delta']:+.1f} pts) : les stories associées évoquent "
-                f"une annonce militaire et un événement politique majeur — "
-                f"le signal le plus fort de l'année."
+                f"({worst_rupture['delta']:+.1f} pts) : les stories associées couvrent "
+                f"la tentative de coup d'État déjouée — pic à ×16 le volume médian journalier, "
+                f"le signal le plus fort de l'année 2025."
             )
 
         # Humanitaire positif
