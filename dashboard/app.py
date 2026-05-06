@@ -1,339 +1,282 @@
-"""Bénin Risk Map — dashboard Streamlit.
-
-Architecture en 3 onglets (cf. doctrine) :
-1. Tableau de bord — résultats des questions Q1, Q2, Q3 (vue exécutive)
-2. Explorer — exploration libre des stories (filtres complets, table)
-3. Méthodologie — doctrine, manifest, limites
-
-Le dashboard consomme directement les modules `src.questions.*` via le
-manifest `questions.yaml`. Aucun calcul de viz n'est réalisé ici : tout
-vient des `Result` produits par les orchestrateurs de questions.
-
-Lancement local : streamlit run dashboard/app.py
-"""
-from __future__ import annotations
-
-import sys
-from datetime import date as dtdate
 from pathlib import Path
 
-# Permettre l'import depuis src/ quand Streamlit lance ce fichier
-ROOT = Path(__file__).resolve().parents[1]
-if str(ROOT) not in sys.path:
-    sys.path.insert(0, str(ROOT))
-
 import pandas as pd
+import plotly.express as px
 import streamlit as st
-import yaml
-
-from src.config import DOMAINS, PROCESSED_DIR, PROJECT_ROOT
-from src.questions.base import Filters
 
 st.set_page_config(
-    page_title="Bénin Risk Map",
-    page_icon="🗺️",
+    page_title="Benin 2025 - Decision Report",
     layout="wide",
 )
 
+st.markdown(
+    """
+<style>
+:root {
+  --bg: #f7f4ef;
+  --ink: #1b1b1b;
+  --muted: #6b6b6b;
+  --accent: #1f6f78;
+  --accent-2: #c84b31;
+}
+html, body, [class*="css"]  {
+  background-color: var(--bg);
+  color: var(--ink);
+}
+.report-title {
+  font-size: 2.2rem;
+  font-weight: 700;
+  margin-bottom: 0.2rem;
+}
+.report-subtitle {
+  color: var(--muted);
+  margin-bottom: 1.5rem;
+}
+.section-title {
+  font-size: 1.4rem;
+  font-weight: 700;
+  margin-top: 2rem;
+  margin-bottom: 0.5rem;
+}
+.callout {
+  background: #ffffff;
+  border-left: 4px solid var(--accent);
+  padding: 0.8rem 1rem;
+  border-radius: 8px;
+  color: var(--ink);
+}
+.note {
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+</style>
+""",
+    unsafe_allow_html=True,
+)
 
-# ---------------------------------------------------------------------------
-# Chargement des données et du manifest
-# ---------------------------------------------------------------------------
+BASE_DIR = Path(__file__).resolve().parent
+DATA_PATH = (BASE_DIR / ".." / "data" / "GDELT_events_benin_2025_cleaned.csv").resolve()
 
-@st.cache_data(show_spinner="Chargement des données...")
-def load_events_and_stories() -> tuple[pd.DataFrame, pd.DataFrame]:
-    """Charge events enrichis et stories. Stoppe l'app avec message si absent."""
-    events_path = PROCESSED_DIR / "events_enriched.parquet"
-    stories_path = PROCESSED_DIR / "stories.parquet"
-    if not events_path.exists() or not stories_path.exists():
-        st.error(
-            "**Données manquantes.** Lancer le pipeline avant d'utiliser le dashboard :\n\n"
-            "```bash\n"
-            "make extract     # snapshot 12 mois (BigQuery)\n"
-            "make process     # nettoyage + enrichissement + stories\n"
-            "```"
+
+@st.cache_data(show_spinner=False)
+def load_data(path: Path) -> pd.DataFrame:
+    df = pd.read_csv(path)
+    for col in [
+        "AvgTone",
+        "GoldsteinScale",
+        "NumMentions",
+        "NumSources",
+        "NumArticles",
+        "ActionGeo_Lat",
+        "ActionGeo_Long",
+    ]:
+        if col in df.columns:
+            df[col] = pd.to_numeric(df[col], errors="coerce")
+    if "MonthYear" in df.columns:
+        df["MonthYearDate"] = pd.to_datetime(df["MonthYear"] + "-01", errors="coerce")
+    return df
+
+
+def safe_mean(series: pd.Series) -> float:
+    series = series.dropna()
+    return float(series.mean()) if not series.empty else 0.0
+
+
+def build_root_summary(df: pd.DataFrame) -> pd.DataFrame:
+    root_label = df["EventRootLabel"].fillna(df["EventRootCode"].astype(str))
+    out = (
+        df.assign(root_label=root_label)
+        .groupby("root_label", as_index=False)
+        .agg(
+            count=("GLOBALEVENTID", "count"),
+            avg_tone=("AvgTone", "mean"),
+            avg_gold=("GoldsteinScale", "mean"),
         )
-        st.stop()
-    events = pd.read_parquet(events_path)
-    stories = pd.read_parquet(stories_path)
-    return events, stories
-
-
-@st.cache_data
-def load_manifest() -> dict:
-    """Charge le manifest YAML des questions."""
-    path = PROJECT_ROOT / "questions.yaml"
-    if not path.exists():
-        return {"questions": []}
-    return yaml.safe_load(path.read_text(encoding="utf-8")) or {"questions": []}
-
-
-# ---------------------------------------------------------------------------
-# Sidebar : filtres globaux
-# ---------------------------------------------------------------------------
-
-def sidebar_filters(events: pd.DataFrame) -> Filters:
-    """Construit un objet `Filters` à partir des choix utilisateur."""
-    st.sidebar.title("Filtres")
-
-    confidence = st.sidebar.radio(
-        "Confiance",
-        options=["all", "strict", "large"],
-        index=0,
-        help="Strict : ≥3 sources et géoloc renseignée. Large : tout. All : pas de filtre.",
+        .sort_values("count", ascending=False)
     )
+    return out
 
-    available_countries = sorted(events["ActionGeo_CountryCode"].dropna().unique().tolist())
-    countries = st.sidebar.multiselect(
-        "Pays",
-        options=available_countries,
-        default=["BC"] if "BC" in available_countries else available_countries[:1],
+
+def build_quad_share(df: pd.DataFrame) -> pd.DataFrame:
+    quad = df["QuadClassLabel"].fillna(df["QuadClass"].astype(str))
+    out = quad.value_counts(dropna=True).rename_axis("quad").reset_index(name="count")
+    total = out["count"].sum()
+    out["share"] = out["count"] / total if total else 0.0
+    return out
+
+
+st.markdown("<div class='report-title'>Benin 2025 - Decision Report</div>", unsafe_allow_html=True)
+st.markdown(
+    "<div class='report-subtitle'>Perception internationale, diplomatie et attractivite economique basees sur GDELT</div>",
+    unsafe_allow_html=True,
+)
+
+if not DATA_PATH.exists():
+    st.error(f"Dataset not found: {DATA_PATH}")
+    st.stop()
+
+df = load_data(DATA_PATH)
+
+# Optional time filter
+if "MonthYearDate" in df.columns:
+    min_date = df["MonthYearDate"].min().date()
+    max_date = df["MonthYearDate"].max().date()
+    start_date, end_date = st.slider(
+        "Periode d'analyse",
+        min_value=min_date,
+        max_value=max_date,
+        value=(min_date, max_date),
+        format="YYYY-MM",
     )
+    df = df[
+        (df["MonthYearDate"] >= pd.Timestamp(start_date))
+        & (df["MonthYearDate"] <= pd.Timestamp(end_date))
+    ]
 
-    domains = st.sidebar.multiselect(
-        "Domaines de risque",
-        options=list(DOMAINS),
-        default=[],
-        help="Vide = tous les domaines.",
+# KPIs
+avg_tone = safe_mean(df["AvgTone"]) if "AvgTone" in df.columns else 0.0
+avg_gold = safe_mean(df["GoldsteinScale"]) if "GoldsteinScale" in df.columns else 0.0
+quad_share = build_quad_share(df)
+verbal_share = 0.0
+if not quad_share.empty:
+    verbal = quad_share[quad_share["quad"].str.contains("Verbal Cooperation", na=False)]
+    if not verbal.empty:
+        verbal_share = float(verbal["share"].iloc[0])
+
+col1, col2, col3, col4 = st.columns(4)
+col1.metric("Events", f"{len(df):,}")
+col2.metric("AvgTone", f"{avg_tone:.2f}")
+col3.metric("Goldstein", f"{avg_gold:.2f}")
+col4.metric("Verbal Cooperation", f"{verbal_share:.0%}")
+
+st.markdown(
+    "<div class='callout'>Lecture rapide: AvgTone mesure le ton mediatico-editorial, tandis que Goldstein mesure l'impact theorique sur la stabilite. Un AvgTone negatif avec un Goldstein positif indique une couverture critique mais des actions stables.</div>",
+    unsafe_allow_html=True,
+)
+
+st.markdown("<div class='section-title'>Perception globale</div>", unsafe_allow_html=True)
+root_summary = build_root_summary(df).head(12)
+fig = px.scatter(
+    root_summary,
+    x="avg_tone",
+    y="avg_gold",
+    size="count",
+    color="count",
+    hover_name="root_label",
+    title="Perception vs stabilite (EventRoot)",
+    color_continuous_scale="Teal",
+)
+fig.update_layout(height=420)
+st.plotly_chart(fig, use_container_width=True)
+
+st.markdown("<div class='section-title'>Diplomatie: pays les plus engages</div>", unsafe_allow_html=True)
+country_stats = (
+    df.assign(actor_country=df["Actor1CountryLabel"].fillna(""))
+    .query("actor_country != '' and actor_country.str.lower() != 'benin'", engine="python")
+    .groupby("actor_country", as_index=False)
+    .agg(count=("GLOBALEVENTID", "count"), avg_tone=("AvgTone", "mean"))
+    .sort_values("count", ascending=False)
+    .head(10)
+)
+fig = px.bar(
+    country_stats,
+    x="actor_country",
+    y="count",
+    color="avg_tone",
+    color_continuous_scale="RdYlGn",
+    title="Top pays - volume et tonalite moyenne",
+)
+fig.update_layout(height=420, xaxis_title="Pays", yaxis_title="Events")
+st.plotly_chart(fig, use_container_width=True)
+
+st.markdown("<div class='section-title'>Attractivite economique</div>", unsafe_allow_html=True)
+attr_roots = {
+    "MAKE PUBLIC STATEMENT",
+    "CONSULT",
+    "ENGAGE IN DIPLOMATIC COOPERATION",
+    "ENGAGE IN MATERIAL COOPERATION",
+    "PROVIDE AID",
+    "EXPRESS INTENT TO COOPERATE",
+}
+attr_summary = root_summary[root_summary["root_label"].str.upper().isin(attr_roots)]
+fig = px.bar(
+    attr_summary,
+    x="root_label",
+    y="count",
+    color="avg_tone",
+    color_continuous_scale="GnBu",
+    title="Actions favorables a l'attractivite (EventRoot)",
+)
+fig.update_layout(height=400, xaxis_title="EventRoot", yaxis_title="Events")
+st.plotly_chart(fig, use_container_width=True)
+
+biz_codes = {"BUS", "DEV", "MNC", "IGO"}
+mask_biz = df["Actor1Type1Code"].isin(biz_codes) | df["Actor2Type1Code"].isin(biz_codes)
+biz = (
+    df[mask_biz]
+    .assign(actor_country=df["Actor1CountryLabel"].fillna(""))
+    .query("actor_country != '' and actor_country.str.lower() != 'benin'", engine="python")
+    .groupby("actor_country", as_index=False)
+    .agg(count=("GLOBALEVENTID", "count"), avg_tone=("AvgTone", "mean"))
+    .sort_values("count", ascending=False)
+    .head(8)
+)
+fig = px.bar(
+    biz,
+    x="actor_country",
+    y="count",
+    color="avg_tone",
+    color_continuous_scale="Teal",
+    title="Pays lies au business et investissements",
+)
+fig.update_layout(height=380, xaxis_title="Pays", yaxis_title="Events")
+st.plotly_chart(fig, use_container_width=True)
+
+st.markdown("<div class='section-title'>Tendance mensuelle</div>", unsafe_allow_html=True)
+if "MonthYearDate" in df.columns:
+    monthly = (
+        df.groupby("MonthYearDate", as_index=False)
+        .agg(count=("GLOBALEVENTID", "count"), avg_tone=("AvgTone", "mean"))
+        .sort_values("MonthYearDate")
     )
-
-    date_min = events["SQLDATE"].min().date()
-    date_max = events["SQLDATE"].max().date()
-    date_range = st.sidebar.date_input(
-        "Période",
-        value=(date_min, date_max),
-        min_value=date_min,
-        max_value=date_max,
+    fig = px.line(
+        monthly,
+        x="MonthYearDate",
+        y="avg_tone",
+        markers=True,
+        title="Tonalite moyenne par mois",
     )
+    fig.update_layout(height=320, yaxis_title="AvgTone", xaxis_title="")
+    st.plotly_chart(fig, use_container_width=True)
 
-    if isinstance(date_range, tuple) and len(date_range) == 2:
-        d_from, d_to = date_range
-    else:
-        d_from, d_to = date_min, date_max
-
-    return Filters(
-        date_from=d_from,
-        date_to=d_to,
-        countries=tuple(countries),
-        risk_domains=tuple(domains),
-        confidence=confidence,  # type: ignore[arg-type]
+    fig = px.bar(
+        monthly,
+        x="MonthYearDate",
+        y="count",
+        title="Volume de couverture par mois",
     )
+    fig.update_layout(height=300, yaxis_title="Events", xaxis_title="")
+    st.plotly_chart(fig, use_container_width=True)
 
+st.markdown("<div class='section-title'>Geographie des evenements</div>", unsafe_allow_html=True)
+geo = df[["ActionGeo_Lat", "ActionGeo_Long"]].dropna()
+geo = geo.rename(columns={"ActionGeo_Lat": "lat", "ActionGeo_Long": "lon"})
+geo = geo.sample(min(len(geo), 4000), random_state=7)
+if not geo.empty:
+    st.map(geo, size=6)
 
-# ---------------------------------------------------------------------------
-# Onglet 1 — Tableau de bord (résultats des questions)
-# ---------------------------------------------------------------------------
+st.markdown("<div class='section-title'>Synthese executive</div>", unsafe_allow_html=True)
+st.markdown(
+    """
+<div class='callout'>
+<ul>
+  <li>La cooperation verbale domine, ce qui renforce la lecture d'une diplomatie active.</li>
+  <li>Les signaux d'attractivite economique sont plus stables que la tonalite globale.</li>
+  <li>Les pays voisins restent les plus visibles, avec un role structurant du Nigeria.</li>
+</ul>
+</div>
+""",
+    unsafe_allow_html=True,
+)
 
-def render_question_section(question_meta: dict, filters: Filters) -> None:
-    """Importe et exécute une question puis affiche son `Result`."""
-    qid = question_meta.get("id", "?")
-    title = question_meta.get("public_title") or question_meta.get("title", qid)
-    module_name = question_meta.get("module", f"src.questions.{qid.lower()}")
-
-    st.markdown(f"### {qid} — {title}")
-    st.caption(question_meta.get("summary", ""))
-
-    try:
-        import importlib
-
-        module = importlib.import_module(module_name)
-    except ImportError as e:
-        st.warning(f"Module `{module_name}` introuvable : {e}")
-        return
-
-    if not hasattr(module, "QUESTION"):
-        st.warning(f"Le module `{module_name}` n'expose pas de variable `QUESTION`.")
-        return
-
-    try:
-        with st.spinner(f"Calcul de {qid}..."):
-            result = module.QUESTION.run(filters)
-    except FileNotFoundError as e:
-        st.error(str(e))
-        return
-    except Exception as e:  # noqa: BLE001
-        st.error(f"Erreur lors de l'exécution de {qid} : {e}")
-        return
-
-    # Métriques en KPIs
-    if result.metrics:
-        scalar_metrics = {
-            k: v for k, v in result.metrics.items()
-            if isinstance(v, (int, float, str)) and not isinstance(v, bool)
-        }
-        if scalar_metrics:
-            cols = st.columns(min(len(scalar_metrics), 5))
-            for col, (k, v) in zip(cols, list(scalar_metrics.items())[:5]):
-                col.metric(k.replace("_", " "), v)
-
-    # Insight narratif
-    if result.insight_text:
-        st.info(result.insight_text)
-
-    # Figures
-    for fig_name, fig in result.figures.items():
-        st.plotly_chart(fig, use_container_width=True)
-
-    # Tables (en expander pour ne pas surcharger)
-    if result.tables:
-        with st.expander(f"Tables détaillées ({len(result.tables)})"):
-            for table_name, df in result.tables.items():
-                st.markdown(f"**{table_name}** — {len(df)} lignes")
-                st.dataframe(df.head(50), use_container_width=True)
-
-    st.divider()
-
-
-def tab_dashboard(manifest: dict, filters: Filters) -> None:
-    """Onglet 1 — itère sur les questions du manifest et rend chacune."""
-    st.subheader("Vue exécutive — résultats des questions de recherche")
-    st.caption(f"Filtres actifs : {filters.describe()}")
-
-    questions = manifest.get("questions", [])
-    if not questions:
-        st.info("Aucune question dans le manifest. Compléter `questions.yaml`.")
-        return
-
-    qids = [q.get("id", "?") for q in questions]
-    selected = st.radio(
-        "Question à afficher",
-        options=qids + ["Toutes"],
-        horizontal=True,
-        index=len(qids),  # par défaut : Toutes
-    )
-
-    for q in questions:
-        if selected != "Toutes" and q.get("id") != selected:
-            continue
-        render_question_section(q, filters)
-
-
-# ---------------------------------------------------------------------------
-# Onglet 2 — Explorer
-# ---------------------------------------------------------------------------
-
-def tab_explorer(events: pd.DataFrame, stories: pd.DataFrame, filters: Filters) -> None:
-    st.subheader("Exploration libre")
-    st.caption(f"Filtres actifs : {filters.describe()}")
-
-    # Application manuelle des filtres (sans passer par les questions)
-    df = events
-    if filters.confidence != "all":
-        df = df[df["confidence_tier"] == filters.confidence]
-    if filters.countries:
-        df = df[df["ActionGeo_CountryCode"].isin(filters.countries)]
-    if filters.risk_domains:
-        df = df[df["risk_domain"].isin(filters.risk_domains)]
-    if filters.date_from and filters.date_to:
-        df = df[
-            (df["SQLDATE"].dt.date >= filters.date_from)
-            & (df["SQLDATE"].dt.date <= filters.date_to)
-        ]
-
-    col1, col2, col3 = st.columns(3)
-    col1.metric("Events filtrés", f"{len(df):,}")
-    col2.metric("Stories totales", f"{len(stories):,}")
-    col3.metric(
-        "Ton moyen",
-        f"{df['AvgTone'].mean():.2f}" if len(df) else "—",
-    )
-
-    st.markdown("#### Top stories par mentions")
-    if not stories.empty:
-        st.dataframe(
-            stories.sort_values("n_mentions", ascending=False).head(50),
-            use_container_width=True,
-        )
-    else:
-        st.info("Aucune story chargée.")
-
-    st.markdown("#### Events filtrés (échantillon 100 lignes)")
-    st.dataframe(df.head(100), use_container_width=True)
-
-
-# ---------------------------------------------------------------------------
-# Onglet 3 — Méthodologie
-# ---------------------------------------------------------------------------
-
-def tab_methodology(manifest: dict) -> None:
-    st.subheader("Méthodologie")
-
-    st.markdown(
-        """
-        ### Source de données
-        - **GDELT v2** (BigQuery) — fenêtre **année calendaire 2025**, 3 pays (Bénin, Burkina Faso, Niger).
-        - Filtre `_PARTITIONTIME` strict pour préserver le quota mensuel BigQuery.
-
-        ### Doctrine d'analyse — 4 principes
-        1. **Story-as-unit** — clusters d'articles, pas events bruts.
-        2. **Confidence as slider** — strict (≥3 sources + géoloc) vs large.
-        3. **Domains, not codes** — agrégation CAMEO en 5-7 domaines de risque lisibles.
-        4. **Admin1-first** — maille départementale (12 départements béninois).
-
-        ### Validations croisées
-        - **ACLED** sur les events sécuritaires au nord du Bénin.
-        - **GDELT Cloud** (free tier) — Conflict Events à méthodologie ACLED + entity profiles.
-
-        ### Limites GDELT documentées
-        | Limite | Traitement |
-        |---|---|
-        | Géocodage infranational imprécis (Hammond & Weidmann 2014) | Audit sur échantillon, fallback ADM1 |
-        | Sur-comptage d'events | Pondération `NumMentions`, clustering stories |
-        | Biais anglophone du crawl | Mention explicite, validation croisée multilingue |
-        | `AvgTone` grossier (dictionnaire GCAM) | Validation xlm-roberta sur sous-échantillon |
-        | Codes acteurs bruyants | Filtre `Actor1Type1Code` ∈ {GOV, MIL, IGO, NGO} |
-
-        ### Architecture du code
-        Quatre couches en cascade : `pipeline` → `analytics` / `ml` / `viz` → `questions` → consommateurs.
-        Les détails sont dans [`docs/04_architecture.md`](https://github.com/StephaneBah/GDELT_Challenge_Isheero_2026_Team09).
-        """
-    )
-
-    st.markdown("### Manifest des questions")
-    questions = manifest.get("questions", [])
-    if questions:
-        meta_df = pd.DataFrame(
-            [
-                {
-                    "ID": q.get("id"),
-                    "Titre public": q.get("public_title") or q.get("title"),
-                    "Owner": q.get("owner"),
-                    "Status": q.get("status"),
-                    "Module": q.get("module"),
-                }
-                for q in questions
-            ]
-        )
-        st.dataframe(meta_df, use_container_width=True)
-    else:
-        st.info("Manifest vide.")
-
-
-# ---------------------------------------------------------------------------
-# Main
-# ---------------------------------------------------------------------------
-
-def main() -> None:
-    st.title("Bénin Risk Map")
-    st.caption(
-        "Cartographie départementale du risque opérationnel à partir des "
-        "signaux médiatiques mondiaux GDELT (année 2025) — Équipe Team09 · "
-        "Hackathon iSHEERO × DataCamp 2026"
-    )
-
-    events, stories = load_events_and_stories()
-    manifest = load_manifest()
-    filters = sidebar_filters(events)
-
-    tab1, tab2, tab3 = st.tabs(["Tableau de bord", "Explorer", "Méthodologie"])
-
-    with tab1:
-        tab_dashboard(manifest, filters)
-    with tab2:
-        tab_explorer(events, stories, filters)
-    with tab3:
-        tab_methodology(manifest)
-
-
-if __name__ == "__main__":
-    main()
+st.markdown("<div class='note'>Dataset: GDELT_events_benin_2025_cleaned.csv</div>", unsafe_allow_html=True)
