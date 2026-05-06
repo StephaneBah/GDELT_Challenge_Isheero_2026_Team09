@@ -1,4 +1,4 @@
-"""Bénin Risk Map — dashboard Streamlit.
+"""Bénin Insights — dashboard Streamlit.
 
 Architecture en 3 onglets (cf. doctrine) :
 1. Tableau de bord — résultats des questions Q1, Q2, Q3 (vue exécutive)
@@ -30,7 +30,7 @@ from src.config import DOMAINS, PROCESSED_DIR, PROJECT_ROOT
 from src.questions.base import Filters, Result
 
 st.set_page_config(
-    page_title="Bénin Risk Map",
+    page_title="Bénin Insights",
     page_icon="🗺️",
     layout="wide",
 )
@@ -353,10 +353,10 @@ def tab_methodology(manifest: dict) -> None:
 # ---------------------------------------------------------------------------
 
 def main() -> None:
-    st.title("Bénin Risk Map")
+    st.title("Bénin Insights")
     st.caption(
-        "Cartographie départementale du risque opérationnel à partir des "
-        "signaux médiatiques mondiaux GDELT (année 2025) — Équipe Team09 · "
+        "Analyse des signaux médiatiques mondiaux GDELT sur le Bénin (2025) — "
+        "Sécurité · Ton · Réseau · Attractivité — Équipe Team09 · "
         "Hackathon iSHEERO × DataCamp 2026"
     )
 

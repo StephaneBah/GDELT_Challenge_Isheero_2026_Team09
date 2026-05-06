@@ -1,4 +1,4 @@
-# Manifest des questions de recherche — Bénin Risk Map
+# Manifest des questions de recherche — Bénin Insights
 #
 # Convention :
 #   - Chaque question correspond à un module Python (champ `module`) exposant
@@ -148,3 +148,44 @@ questions:
       acteurs distincts en {n_communities} communautés. Plus grand
       gagnant post-juillet 2023 : {winners_post_2023[0].node}.
       Plus grand perdant : {losers_post_2023[0].node}.
+
+  - id: Q4
+    module: src.questions.q4_attractivity
+    title: "L'attractivité"
+    public_title: "Signaux de coopération et d'investissement"
+    owner: data_scientist
+    status: validated
+    public_audience:
+      - investisseurs
+      - decideurs_publics
+      - partenaires_developpement
+      - chambres_commerce
+    summary: >
+      Analyse des signaux médiatiques positifs (coopération verbale et
+      matérielle, diplomatie, aide) pour mesurer l'attractivité du Bénin
+      sur 2025. Identification des top partenaires économiques et
+      diplomatiques, des acteurs économiques impliqués (entreprises,
+      IGO, agences de développement) et de l'évolution mensuelle.
+    default_filters:
+      countries: [BN]
+    primitives_used:
+      analytics:
+        - aggregate.filter_period
+        - aggregate.confidence_filter
+      ml: []
+      viz:
+        - plotly bar chart partenaires
+        - plotly line tendance mensuelle
+        - plotly pie profil quad
+    outputs:
+      figures:
+        - partenaires_coop
+        - tendance_mensuelle
+        - profil_quad
+      tables:
+        - top_partenaires_cooperation
+        - acteurs_economiques
+    insight_template: >
+      Sur la période, {pct_coop}% des événements GDELT impliquant le
+      Bénin relèvent de la coopération. {top_partner} est le premier
+      partenaire. Pic de signaux en {peak_month}.

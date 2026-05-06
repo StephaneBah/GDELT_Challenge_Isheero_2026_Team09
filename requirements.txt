@@ -1,4 +1,4 @@
-# Bénin Risk Map — dépendances core (suffisent pour pipeline + dashboard).
+# Bénin Insights — dépendances core (suffisent pour pipeline + dashboard).
 # Installation : `make install` (crée .venv si nécessaire et installe ici).
 #
 # Pour la validation sentiment (xlm-roberta) du notebook :

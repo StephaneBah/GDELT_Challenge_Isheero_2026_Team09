@@ -1,4 +1,4 @@
-# Bénin Risk Map — dépendances ML lourdes (optionnelles).
+# Bénin Insights — dépendances ML lourdes (optionnelles).
 # Utilisées uniquement par src/ml/sentiment.py (validation xlm-roberta
 # dans le notebook 01_exploration). Le dashboard et les questions Q1/Q2/Q3
 # fonctionnent sans ces paquets.

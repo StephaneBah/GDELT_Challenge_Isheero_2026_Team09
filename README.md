@@ -1,6 +1,6 @@
-# Bénin Risk Map
+# Bénin Insights
 
-> **Un outil départemental de cartographie du risque opérationnel au Bénin, fondé sur 12 mois de signaux médiatiques mondiaux (GDELT), avec validation croisée et alertes personnalisables.**
+> **Analyse des signaux médiatiques mondiaux GDELT sur le Bénin (2025) — sécurité, ton, réseau diplomatique et attractivité — par l'équipe Team09 du Hackathon iSHEERO × DataCamp 2026.**
 
 Projet réalisé dans le cadre du **Hackathon iSHEERO × DataCamp Donates 2026 — Bénin Insights Challenge** par l'équipe Team09.
 
@@ -10,11 +10,12 @@ Projet réalisé dans le cadre du **Hackathon iSHEERO × DataCamp Donates 2026 �
 
 Le Bénin absorbe un double choc — crise sécuritaire sahélienne au nord, recomposition diplomatique ouest-africaine — que les statistiques officielles ne mesurent pas. À partir de la base GDELT (Global Database of Events, Language and Tone), nous construisons la première cartographie départementale du risque opérationnel béninois sur 12 mois, à destination des ONG opérationnelles, de la presse sécurité, des décideurs publics et des ambassades.
 
-## Les 3 questions de recherche
+## Les 4 questions de recherche
 
 - **Q1 — Le terrain.** Comment se distribue le risque sécuritaire opérationnel département par département au Bénin sur 12 mois, comparé aux régions frontalières du Burkina Faso et du Niger ?
 - **Q2 — Le ton.** Comment évolue le ton médiatique mondial sur le Bénin par domaine de risque (sécuritaire, économique, sanitaire, informationnel) sur 12 mois, et à quels narratifs les points de bascule sont-ils attribuables ?
 - **Q3 — Le réseau.** Avec quels acteurs et médias le Bénin co-apparaît-il, comment cette structure se recompose-t-elle depuis juillet 2023, et quels médias portent quels narratifs ?
+- **Q4 — L'attractivité.** Quels signaux médiatiques (coopération, investissement, diplomatie) témoignent de l'attractivité du Bénin en 2025, et qui sont ses principaux partenaires économiques ?
 
 ## Doctrine d'analyse
 

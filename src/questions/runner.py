@@ -107,7 +107,7 @@ def parse_filters(args: argparse.Namespace) -> Filters:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
-        description="Runner Bénin Risk Map — exécute une question de recherche."
+        description="Runner Bénin Insights — exécute une question de recherche."
     )
     parser.add_argument("--list", action="store_true", help="Liste les questions du manifest")
     parser.add_argument("--question", help="ID de la question à exécuter (ex: Q1)")
