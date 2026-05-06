@@ -44,7 +44,7 @@ logger = logging.getLogger(__name__)
 
 
 def build_audit_query(days: int = 7) -> str:
-    """Requête d'audit : top codes acteurs autour des events BC/UV/NG."""
+    """Requête d'audit : top codes acteurs autour des events BN/UV/NG."""
     fips = ", ".join(f"'{c}'" for c in FIPS_TARGETS)
     return f"""
         SELECT
@@ -88,7 +88,7 @@ def diagnose(df: pd.DataFrame) -> None:
 
     # Top 30
     print()
-    print("Top codes acteurs présents dans les events autour de BC/UV/NG :")
+    print("Top codes acteurs présents dans les events autour de BN/UV/NG :")
     print()
     print(df.to_string(index=False, max_colwidth=40))
 

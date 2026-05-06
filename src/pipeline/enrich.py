@@ -17,6 +17,7 @@ import pandas as pd
 from src.config import (
     BENIN_DEPARTMENTS,
     CAMEO_TO_DOMAIN,
+    FIPS_ADM1_TO_DEPT,
     FIPS_BENIN,
     INTERIM_DIR,
     PROCESSED_DIR,
@@ -76,20 +77,32 @@ assert set(DEPT_ALIASES.keys()) == set(BENIN_DEPARTMENTS), (
 def normalize_benin_admin1(df: pd.DataFrame) -> pd.DataFrame:
     """Normalise le nom de département pour les events béninois.
 
-    GDELT renvoie `ActionGeo_FullName` du type "Atakora, Benin" ou parfois
-    juste "Benin". Le matching utilise une table d'aliases (cf. `DEPT_ALIASES`)
-    pour résoudre les variantes orthographiques courantes (Atakora->Atacora,
-    Oueme->Ouémé, Kouffo->Couffo, Atlanique->Atlantique).
+    Stratégie en deux passes :
+    1. **Mapping ADM1Code** (canonique, fiable) : utilise FIPS_ADM1_TO_DEPT
+       pour résoudre les codes BN07..BN18 vers les 12 départements.
+    2. **Fallback texte** : pour les events sans ADM1Code mais avec un
+       département mentionné dans `ActionGeo_FullName`, table d'aliases
+       pour les variantes orthographiques (Atakora->Atacora, Oueme->Ouémé,
+       Kouffo->Couffo, Atlanique->Atlantique).
+
+    Les events tagués au niveau pays (ADM1Code='BN' ou vide) restent en
+    `dept_normalized=NA` — c'est volontaire, ils ne sont pas localisables.
     """
     df["dept_normalized"] = pd.NA
     benin_mask = df["ActionGeo_CountryCode"] == FIPS_BENIN
-    full = df.loc[benin_mask, "ActionGeo_FullName"].fillna("").str.lower()
 
+    # Passe 1 : mapping ADM1Code (canonique)
+    adm1_match = df.loc[benin_mask, "ActionGeo_ADM1Code"].map(FIPS_ADM1_TO_DEPT)
+    df.loc[benin_mask, "dept_normalized"] = adm1_match
+
+    # Passe 2 : fallback texte sur les events encore non résolus
+    unmatched = benin_mask & df["dept_normalized"].isna()
+    full = df.loc[unmatched, "ActionGeo_FullName"].fillna("").str.lower()
     for dept, aliases in DEPT_ALIASES.items():
-        # `regex=False` pour que les caractères accentués soient pris au littéral
         for alias in aliases:
             m = full.str.contains(alias, regex=False, na=False)
-            df.loc[benin_mask & m, "dept_normalized"] = dept
+            df.loc[unmatched & m.reindex(df.index, fill_value=False), "dept_normalized"] = dept
+
     return df
 
 

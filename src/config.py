@@ -33,11 +33,34 @@ SNAPSHOT_DATE_FROM = date.fromisoformat(os.getenv("SNAPSHOT_DATE_FROM", "2025-01
 SNAPSHOT_DATE_TO = date.fromisoformat(os.getenv("SNAPSHOT_DATE_TO", "2026-01-01"))
 
 # --- Pays cibles ---
-# Codes FIPS (ActionGeo_CountryCode)
-FIPS_BENIN = "BC"
+# Codes FIPS 10-4 (ActionGeo_CountryCode dans GDELT).
+# ATTENTION : le brief du hackathon indiquait "BC" pour le Bénin — c'est une
+# erreur typographique. BC est le code FIPS du **Botswana**.
+# Bénin = BN, Burkina Faso = UV (ex-Upper Volta), Niger = NG.
+FIPS_BENIN = "BN"
 FIPS_BURKINA = "UV"
 FIPS_NIGER = "NG"
 FIPS_TARGETS = (FIPS_BENIN, FIPS_BURKINA, FIPS_NIGER)
+
+# Mapping FIPS ADM1Code -> nom officiel du département béninois.
+# Construit empiriquement à partir des données GDELT 2025 (cf. notebook).
+# La forme du code est BN<NN> où NN est numéroté approximativement par
+# ordre alphabétique des départements officiels.
+FIPS_ADM1_TO_DEPT: dict[str, str] = {
+    "BN07": "Alibori",
+    "BN08": "Atacora",
+    "BN09": "Atlantique",
+    "BN10": "Borgou",
+    "BN11": "Collines",
+    "BN12": "Couffo",
+    "BN13": "Donga",
+    "BN14": "Littoral",
+    "BN15": "Mono",
+    "BN16": "Ouémé",
+    "BN17": "Plateau",
+    "BN18": "Zou",
+    # BN et BN00 : country-level / général, non attribuable à un département.
+}
 
 # Codes CAMEO acteurs (Actor1CountryCode / Actor2CountryCode)
 #
@@ -117,6 +140,102 @@ CAMEO_TO_DOMAIN = {
 }
 
 DOMAINS = ("securitaire", "politique", "economique", "humanitaire", "informationnel")
+
+# --- Labels lisibles pour affichage (dashboard, insights, pitch) ---
+
+DOMAIN_LABELS: dict[str, str] = {
+    "securitaire":    "Sécuritaire",
+    "politique":      "Politique",
+    "economique":     "Économique",
+    "humanitaire":    "Humanitaire",
+    "informationnel": "Informationnel",
+}
+
+# Codes acteurs CAMEO → labels compréhensibles par un non-spécialiste.
+# Inclut : codes pays ISO-3, types génériques, combinés pays+type.
+ACTOR_LABELS: dict[str, str] = {
+    # Pays de la zone
+    "BEN": "Bénin",
+    "NER": "Niger",
+    "NGA": "Nigeria",
+    "BFA": "Burkina Faso",
+    "MLI": "Mali",
+    "GHA": "Ghana",
+    "TGO": "Togo",
+    "CIV": "Côte d'Ivoire",
+    "SEN": "Sénégal",
+    "GMB": "Gambie",
+    "GNB": "Guinée-Bissau",
+    "CMR": "Cameroun",
+    # Grands acteurs mondiaux
+    "USA": "États-Unis",
+    "FRA": "France",
+    "CHN": "Chine",
+    "RUS": "Russie",
+    "GBR": "Royaume-Uni",
+    "DEU": "Allemagne",
+    # Codes régionaux génériques
+    "AFR": "Acteurs africains",
+    "WEU": "Europe occidentale",
+    "UNO": "Nations Unies",
+    "ECW": "CEDEAO",
+    # Types d'acteurs génériques
+    "GOV": "Gouvernements",
+    "MIL": "Forces armées",
+    "NGO": "ONG",
+    "IGO": "Organisations internationales",
+    "CVL": "Société civile",
+    "MED": "Médias",
+    "UAF": "Forces armées non-identifiées",
+    "REB": "Groupes armés non-étatiques",
+    "SPY": "Services de renseignement",
+    # Acteurs combinés pays + type
+    "BENGOV":  "Gouvernement béninois",
+    "BENMIL":  "Armée béninoise",
+    "NERGOV":  "Gouvernement du Niger",
+    "NERMIL":  "Armée du Niger",
+    "NGAGOV":  "Gouvernement nigérian",
+    "NGAMIL":  "Armée nigériane",
+    "BFAGOV":  "Gouvernement burkinabè",
+    "BFAMIL":  "Armée burkinabè",
+    "USAGOV":  "Gouvernement américain",
+    "FRAGOV":  "Gouvernement français",
+    "ECWIGO":  "CEDEAO",
+    "UNGOV":   "Nations Unies",
+    "UNOCHA":  "OCHA (aide humanitaire ONU)",
+}
+
+_ACTOR_TYPE_SUFFIXES: dict[str, str] = {
+    "GOV": "Gouvernement",
+    "MIL": "Armée",
+    "NGO": "ONG",
+    "IGO": "Org. internationale",
+    "CVL": "Civils",
+    "MED": "Médias",
+    "UAF": "Forces armées",
+    "REB": "Groupe armé",
+}
+
+
+def humanize_actor(code: str) -> str:
+    """Convertit un code acteur CAMEO en label lisible.
+
+    Stratégie :
+    1. Lookup direct dans ACTOR_LABELS.
+    2. Parsing structurel : 3 chars pays + suffix type.
+    3. Retourne le code brut en dernier recours.
+    """
+    if not code or not isinstance(code, str):
+        return "Inconnu"
+    if code in ACTOR_LABELS:
+        return ACTOR_LABELS[code]
+    country_label = ACTOR_LABELS.get(code[:3], code[:3])
+    suffix = code[3:] if len(code) > 3 else ""
+    type_label = _ACTOR_TYPE_SUFFIXES.get(suffix, suffix)
+    if type_label:
+        return f"{type_label} ({country_label})"
+    return country_label
+
 
 # --- BigQuery ---
 GCP_PROJECT_ID = os.getenv("GCP_PROJECT_ID", "")

@@ -50,24 +50,28 @@ def clean_mentions(df: pd.DataFrame) -> pd.DataFrame:
 
 def main() -> None:
     events_files = list(RAW_DIR.glob("events_*.parquet"))
-    mentions_files = list(RAW_DIR.glob("mentions_*.parquet"))
-    if not events_files or not mentions_files:
+    if not events_files:
         raise FileNotFoundError(
-            "Aucun fichier raw trouvé. Lancer d'abord `python -m src.pipeline.extract`."
+            "Aucun fichier raw events trouvé. Lancer d'abord `python -m src.pipeline.extract`."
         )
 
-    events = pd.read_parquet(events_files[0])
-    mentions = pd.read_parquet(mentions_files[0])
-
-    events = clean_events(events)
-    mentions = clean_mentions(mentions)
-
     INTERIM_DIR.mkdir(parents=True, exist_ok=True)
+
+    events = pd.read_parquet(events_files[0])
+    events = clean_events(events)
     events.to_parquet(INTERIM_DIR / "events.parquet", compression="snappy", index=False)
-    mentions.to_parquet(
-        INTERIM_DIR / "mentions.parquet", compression="snappy", index=False
-    )
-    logger.info("Interim écrit : %s", INTERIM_DIR)
+    logger.info("events nettoyés : %s", INTERIM_DIR / "events.parquet")
+
+    mentions_files = list(RAW_DIR.glob("mentions_*.parquet"))
+    if mentions_files:
+        mentions = pd.read_parquet(mentions_files[0])
+        mentions = clean_mentions(mentions)
+        mentions.to_parquet(
+            INTERIM_DIR / "mentions.parquet", compression="snappy", index=False
+        )
+        logger.info("mentions nettoyées : %s", INTERIM_DIR / "mentions.parquet")
+    else:
+        logger.info("Pas de mentions à nettoyer (fichier raw absent — c'est OK).")
 
 
 if __name__ == "__main__":

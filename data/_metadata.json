@@ -1,0 +1,24 @@
+{
+  "snapshot_extracted_at": "2026-05-05T16:16:37.133262Z",
+  "snapshot_window": {
+    "from": "2025-01-01",
+    "to": "2026-01-01"
+  },
+  "countries_fips": [
+    "BC",
+    "UV",
+    "NG"
+  ],
+  "countries_cameo": [
+    "BEN",
+    "BFA",
+    "BFO",
+    "NER"
+  ],
+  "files": {
+    "events": {
+      "path": "data\\raw\\events_2025-01-01_2026-01-01.parquet",
+      "sha256_short": "3f8d808d6345d5c4"
+    }
+  }
+}

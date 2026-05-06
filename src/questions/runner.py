@@ -3,7 +3,7 @@
 Usage :
     python -m src.questions.runner --list
     python -m src.questions.runner --question Q1
-    python -m src.questions.runner --question Q1 --confidence strict --countries BC,UV
+    python -m src.questions.runner --question Q1 --confidence strict --countries BN,UV
 
 Le runner ne contient AUCUNE logique d'analyse. Il :
 1. Lit `questions.yaml` (manifest) pour la liste et les métadonnées.
@@ -113,7 +113,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--question", help="ID de la question à exécuter (ex: Q1)")
     parser.add_argument("--date-from", dest="date_from", help="Date début (YYYY-MM-DD)")
     parser.add_argument("--date-to", dest="date_to", help="Date fin (YYYY-MM-DD)")
-    parser.add_argument("--countries", help="Codes FIPS séparés par virgule (ex: BC,UV)")
+    parser.add_argument("--countries", help="Codes FIPS séparés par virgule (ex: BN,UV,NG)")
     parser.add_argument("--domains", help="Domaines de risque séparés par virgule")
     parser.add_argument(
         "--confidence",

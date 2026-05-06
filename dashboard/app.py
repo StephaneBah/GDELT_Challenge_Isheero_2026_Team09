@@ -27,7 +27,7 @@ import streamlit as st
 import yaml
 
 from src.config import DOMAINS, PROCESSED_DIR, PROJECT_ROOT
-from src.questions.base import Filters
+from src.questions.base import Filters, Result
 
 st.set_page_config(
     page_title="Bénin Risk Map",
@@ -40,9 +40,20 @@ st.set_page_config(
 # Chargement des données et du manifest
 # ---------------------------------------------------------------------------
 
+def _parquet_mtime() -> float:
+    """Renvoie le mtime du parquet enrichi — sert de clé de cache."""
+    p = PROCESSED_DIR / "events_enriched.parquet"
+    return p.stat().st_mtime if p.exists() else 0.0
+
+
 @st.cache_data(show_spinner="Chargement des données...")
-def load_events_and_stories() -> tuple[pd.DataFrame, pd.DataFrame]:
-    """Charge events enrichis et stories. Stoppe l'app avec message si absent."""
+def load_events_and_stories(mtime: float) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Charge events enrichis et stories. Stoppe l'app avec message si absent.
+
+    Le paramètre `mtime` (float, hashable) est inclus dans la clé de cache
+    Streamlit : quand le parquet est régénéré, mtime change et le cache est
+    automatiquement invalidé.
+    """
     events_path = PROCESSED_DIR / "events_enriched.parquet"
     stories_path = PROCESSED_DIR / "stories.parquet"
     if not events_path.exists() or not stories_path.exists():
@@ -57,6 +68,24 @@ def load_events_and_stories() -> tuple[pd.DataFrame, pd.DataFrame]:
     events = pd.read_parquet(events_path)
     stories = pd.read_parquet(stories_path)
     return events, stories
+
+
+@st.cache_data(show_spinner=False)
+def _run_question_cached(
+    module_name: str,
+    mtime: float,
+    filters_key: str,
+    filters: Filters,
+) -> Result:
+    """Wrapper mis en cache autour de QUESTION.run().
+
+    `mtime` invalide le cache quand le parquet est régénéré.
+    `filters_key` invalide le cache quand les filtres changent.
+    """
+    import importlib
+
+    module = importlib.import_module(module_name)
+    return module.QUESTION.run(filters)
 
 
 @st.cache_data
@@ -75,26 +104,35 @@ def load_manifest() -> dict:
 def sidebar_filters(events: pd.DataFrame) -> Filters:
     """Construit un objet `Filters` à partir des choix utilisateur."""
     st.sidebar.title("Filtres")
+    st.sidebar.caption("Bénin · Burkina Faso · Niger — 2025")
+
+    if st.sidebar.button("Actualiser les données", use_container_width=True):
+        st.cache_data.clear()
+        st.rerun()
+
+    st.sidebar.markdown("---")
 
     confidence = st.sidebar.radio(
-        "Confiance",
+        "Niveau de confiance",
         options=["all", "strict", "large"],
         index=0,
-        help="Strict : ≥3 sources et géoloc renseignée. Large : tout. All : pas de filtre.",
-    )
-
-    available_countries = sorted(events["ActionGeo_CountryCode"].dropna().unique().tolist())
-    countries = st.sidebar.multiselect(
-        "Pays",
-        options=available_countries,
-        default=["BC"] if "BC" in available_countries else available_countries[:1],
+        help=(
+            "**Strict** : events avec ≥3 sources et géolocalisation renseignée.\n\n"
+            "**Large** : events avec au moins 1 source.\n\n"
+            "**All** : aucun filtre de qualité (volume maximal)."
+        ),
     )
 
     domains = st.sidebar.multiselect(
         "Domaines de risque",
         options=list(DOMAINS),
         default=[],
-        help="Vide = tous les domaines.",
+        help=(
+            "Filtre par domaine thématique CAMEO.\n\n"
+            "Vide = tous les domaines.\n\n"
+            "**Q1 analyse toujours le domaine sécuritaire**, "
+            "indépendamment de ce filtre."
+        ),
     )
 
     date_min = events["SQLDATE"].min().date()
@@ -114,7 +152,7 @@ def sidebar_filters(events: pd.DataFrame) -> Filters:
     return Filters(
         date_from=d_from,
         date_to=d_to,
-        countries=tuple(countries),
+        countries=("BN",),  # Q1 étend à BN/UV/NG en interne ; Q2/Q3 restent centrés Bénin
         risk_domains=tuple(domains),
         confidence=confidence,  # type: ignore[arg-type]
     )
@@ -124,7 +162,7 @@ def sidebar_filters(events: pd.DataFrame) -> Filters:
 # Onglet 1 — Tableau de bord (résultats des questions)
 # ---------------------------------------------------------------------------
 
-def render_question_section(question_meta: dict, filters: Filters) -> None:
+def render_question_section(question_meta: dict, filters: Filters, mtime: float) -> None:
     """Importe et exécute une question puis affiche son `Result`."""
     qid = question_meta.get("id", "?")
     title = question_meta.get("public_title") or question_meta.get("title", qid)
@@ -134,20 +172,19 @@ def render_question_section(question_meta: dict, filters: Filters) -> None:
     st.caption(question_meta.get("summary", ""))
 
     try:
-        import importlib
-
-        module = importlib.import_module(module_name)
+        with st.spinner(f"Calcul de {qid}..."):
+            result = _run_question_cached(
+                module_name=module_name,
+                mtime=mtime,
+                filters_key=filters.describe(),
+                filters=filters,
+            )
     except ImportError as e:
         st.warning(f"Module `{module_name}` introuvable : {e}")
         return
-
-    if not hasattr(module, "QUESTION"):
-        st.warning(f"Le module `{module_name}` n'expose pas de variable `QUESTION`.")
+    except AttributeError as e:
+        st.warning(f"Le module `{module_name}` n'expose pas de variable `QUESTION` : {e}")
         return
-
-    try:
-        with st.spinner(f"Calcul de {qid}..."):
-            result = module.QUESTION.run(filters)
     except FileNotFoundError as e:
         st.error(str(e))
         return
@@ -155,16 +192,18 @@ def render_question_section(question_meta: dict, filters: Filters) -> None:
         st.error(f"Erreur lors de l'exécution de {qid} : {e}")
         return
 
-    # Métriques en KPIs
+    # Métriques en KPIs (clés préfixées "_" = usage interne, exclues de l'affichage)
     if result.metrics:
         scalar_metrics = {
             k: v for k, v in result.metrics.items()
-            if isinstance(v, (int, float, str)) and not isinstance(v, bool)
+            if isinstance(v, (int, float, str))
+            and not isinstance(v, bool)
+            and not k.startswith("_")
         }
         if scalar_metrics:
             cols = st.columns(min(len(scalar_metrics), 5))
             for col, (k, v) in zip(cols, list(scalar_metrics.items())[:5]):
-                col.metric(k.replace("_", " "), v)
+                col.metric(k, v)
 
     # Insight narratif
     if result.insight_text:
@@ -184,7 +223,7 @@ def render_question_section(question_meta: dict, filters: Filters) -> None:
     st.divider()
 
 
-def tab_dashboard(manifest: dict, filters: Filters) -> None:
+def tab_dashboard(manifest: dict, filters: Filters, mtime: float) -> None:
     """Onglet 1 — itère sur les questions du manifest et rend chacune."""
     st.subheader("Vue exécutive — résultats des questions de recherche")
     st.caption(f"Filtres actifs : {filters.describe()}")
@@ -205,7 +244,7 @@ def tab_dashboard(manifest: dict, filters: Filters) -> None:
     for q in questions:
         if selected != "Toutes" and q.get("id") != selected:
             continue
-        render_question_section(q, filters)
+        render_question_section(q, filters, mtime)
 
 
 # ---------------------------------------------------------------------------
@@ -321,14 +360,15 @@ def main() -> None:
         "Hackathon iSHEERO × DataCamp 2026"
     )
 
-    events, stories = load_events_and_stories()
+    mtime = _parquet_mtime()
+    events, stories = load_events_and_stories(mtime)
     manifest = load_manifest()
     filters = sidebar_filters(events)
 
     tab1, tab2, tab3 = st.tabs(["Tableau de bord", "Explorer", "Méthodologie"])
 
     with tab1:
-        tab_dashboard(manifest, filters)
+        tab_dashboard(manifest, filters, mtime)
     with tab2:
         tab_explorer(events, stories, filters)
     with tab3:

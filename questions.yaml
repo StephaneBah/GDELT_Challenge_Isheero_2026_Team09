@@ -19,7 +19,7 @@ version: 1
 defaults:
   filters:
     confidence: large
-    countries: ["BC"]
+    countries: ["BN"]
 
 questions:
 
@@ -40,7 +40,7 @@ questions:
       médiatique relative.
     default_filters:
       risk_domains: [securitaire]
-      countries: [BC, UV, NG]
+      countries: [BN, UV, NG]
     primitives_used:
       analytics:
         - aggregate.by_admin1
@@ -84,7 +84,7 @@ questions:
       Détection des points de bascule (PELT) et attribution aux
       stories dominantes des 7 jours précédents.
     default_filters:
-      countries: [BC]
+      countries: [BN]
     primitives_used:
       analytics:
         - aggregate.filter_period

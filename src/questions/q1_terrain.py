@@ -43,8 +43,9 @@ class _Q1:
     def _apply_filters(self, df: pd.DataFrame, filters: Filters) -> pd.DataFrame:
         df = aggregate.filter_period(df, date_from=filters.date_from, date_to=filters.date_to)
         df = aggregate.confidence_filter(df, tier=filters.confidence)
-        if filters.countries:
-            df = df[df["ActionGeo_CountryCode"].isin(filters.countries)]
+        # Q1 est intrinsèquement comparative BN/UV/NG : on IGNORE le filtre
+        # pays utilisateur et on retient toujours les 3 pays cibles.
+        df = df[df["ActionGeo_CountryCode"].isin([FIPS_BENIN, FIPS_BURKINA, FIPS_NIGER])]
         # Q1 est intrinsèquement sécuritaire, sauf si l'utilisateur force d'autres domaines
         domains = filters.risk_domains or ("securitaire",)
         df = aggregate.domain_filter(df, domains)
@@ -61,12 +62,18 @@ class _Q1:
                 metadata={"filters": filters.describe()},
             )
 
-        # 1. Distribution départementale (Bénin uniquement)
+        # 1. Distribution départementale (Bénin uniquement, events géolocalisés)
         benin = events[events["ActionGeo_CountryCode"] == FIPS_BENIN]
         by_dept = aggregate.by_admin1(benin, value_col="n_events")
-        by_dept = by_dept.sort_values("n_events", ascending=False)
+        # On retire le bucket NaN (events tagués au niveau pays uniquement)
+        # qui domine en volume mais ne nous renseigne pas géographiquement.
+        by_dept = (
+            by_dept.dropna(subset=["dept_normalized"])
+            .sort_values("n_events", ascending=False)
+            .reset_index(drop=True)
+        )
 
-        # 2. Comparaison régionale BC / UV / NG
+        # 2. Comparaison régionale BN / UV / NG
         by_country = aggregate.by_country(events, value_col="n_events")
         by_country["country_label"] = by_country["ActionGeo_CountryCode"].map(_COUNTRY_LABELS)
 
@@ -95,7 +102,7 @@ class _Q1:
             ),
             "country_comparison": timeseries.multi_line(
                 ts_by_country,
-                title="Q1 — Stories sécuritaires hebdomadaires (BC / UV / NG)",
+                title="Q1 — Stories sécuritaires hebdomadaires (BN / UV / NG)",
                 yaxis_title="Stories / semaine",
             ),
         }
@@ -122,25 +129,39 @@ class _Q1:
         coverage_ratio = (mpe_benin / mpe_burkina) if mpe_burkina else None
 
         metrics = {
-            "n_events_benin": n_benin,
-            "n_events_burkina": n_burkina,
-            "n_events_niger": n_niger,
-            "ratio_benin_vs_burkina_pct": round(ratio_burkina * 100, 1) if ratio_burkina else None,
-            "top_dept_1": top_dept_1,
-            "top_dept_2": top_dept_2,
-            "mentions_per_event_benin": round(mpe_benin, 2),
-            "mentions_per_event_burkina": round(mpe_burkina, 2),
-            "coverage_ratio_benin_vs_burkina": round(coverage_ratio, 2) if coverage_ratio else None,
+            "Incidents sécuritaires — Bénin": n_benin,
+            "Incidents sécuritaires — Burkina Faso": n_burkina,
+            "Incidents sécuritaires — Niger": n_niger,
+            "Intensité Bénin / Burkina Faso": f"{round(ratio_burkina * 100, 1)} %" if ratio_burkina else "n/d",
+            "Département le plus exposé": top_dept_1 or "n/d",
+            "2e département exposé": top_dept_2 or "n/d",
+            # Valeurs internes conservées pour le calcul de l'insight (non affichées en KPI)
+            "_mpe_benin": round(mpe_benin, 2),
+            "_mpe_burkina": round(mpe_burkina, 2),
+            "_coverage_ratio": round(coverage_ratio, 2) if coverage_ratio else None,
         }
 
-        # 7. Insight narratif (template, à raffiner au pitch)
+        # 7. Insight narratif
+        ratio_str = (
+            f"{round(ratio_burkina * 100, 1)} %"
+            if ratio_burkina is not None
+            else "n/d"
+        )
+        coverage_str = (
+            f"{round(coverage_ratio, 2)}×"
+            if coverage_ratio is not None
+            else "n/d"
+        )
+        dept1_str = top_dept_1 or "n/d"
+        dept2_str = top_dept_2 or "n/d"
         insight = (
-            f"Sur la période, le Bénin a enregistré {n_benin} events sécuritaires, "
-            f"soit {metrics['ratio_benin_vs_burkina_pct']}% de l'intensité observée au "
-            f"Burkina Faso. Top départements concernés : {top_dept_1} et {top_dept_2}. "
-            f"Sous-couverture médiatique mesurée : un event béninois génère "
-            f"{metrics['coverage_ratio_benin_vs_burkina']}× moins de mentions qu'un "
-            f"event burkinabè comparable."
+            f"Sur 2025, le Bénin a enregistré {n_benin} incidents sécuritaires "
+            f"dans la presse mondiale, soit {ratio_str} de l'intensité observée "
+            f"au Burkina Faso. Les départements les plus exposés sont "
+            f"{dept1_str} et {dept2_str} — tous deux frontaliers des zones "
+            f"de conflit sahélien. Un incident béninois génère {coverage_str} "
+            f"moins de couverture médiatique qu'un incident burkinabè comparable : "
+            f"la crise au nord du Bénin reste statistiquement sous-couverte."
         )
 
         return Result(

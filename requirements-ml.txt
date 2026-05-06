@@ -1,0 +1,13 @@
+# Bénin Risk Map — dépendances ML lourdes (optionnelles).
+# Utilisées uniquement par src/ml/sentiment.py (validation xlm-roberta
+# dans le notebook 01_exploration). Le dashboard et les questions Q1/Q2/Q3
+# fonctionnent sans ces paquets.
+#
+# Installation : `make install-ml` (après `make install`).
+#
+# Note Python 3.13 : torch >=2.4 est requis pour avoir des wheels py313.
+
+torch>=2.4.0
+transformers>=4.40.0
+sentence-transformers>=2.5.0
+bertopic>=0.16.0

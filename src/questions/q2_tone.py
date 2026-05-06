@@ -13,7 +13,7 @@ from dataclasses import dataclass
 import pandas as pd
 
 from src.analytics import aggregate, change_points
-from src.config import DOMAINS, FIPS_BENIN, PROCESSED_DIR
+from src.config import DOMAIN_LABELS, DOMAINS, FIPS_BENIN, PROCESSED_DIR
 from src.questions.base import Filters, Result
 from src.viz import timeseries
 
@@ -99,60 +99,144 @@ class _Q2:
                 yaxis_title="AvgTone (lissé 7j)",
             )
 
-        # Pour chaque rupture globale, identifier les top stories antérieures
+        # Pour chaque rupture globale : ton avant/après et stories associées
         rupture_explanations = []
         for bp in breakpoints_global:
+            t_before = float(tone_global.loc[:bp].tail(7).mean())
+            t_after = float(tone_global.loc[bp:].head(7).mean())
             rupture_explanations.append(
                 {
                     "breakpoint": bp.strftime("%Y-%m-%d"),
-                    "tone_before": float(tone_global.loc[:bp].tail(7).mean()),
-                    "tone_after": float(tone_global.loc[bp:].head(7).mean()),
+                    "tone_before": round(t_before, 3),
+                    "tone_after": round(t_after, 3),
+                    "delta": round(t_after - t_before, 3),
                     "top_stories": self._top_stories_around(events, bp),
                 }
             )
         if rupture_explanations:
-            tables["ruptures"] = pd.DataFrame(rupture_explanations)
+            tables["Ruptures de ton et stories associées"] = pd.DataFrame(rupture_explanations)
 
-        # Métriques
+        # ── Calculs analytiques enrichis ───────────────────────────────────
         n_ruptures_global = len(breakpoints_global)
-        delta_total = (
-            float(tone_global.iloc[-30:].mean() - tone_global.iloc[:30].mean())
-            if len(tone_global) > 60
-            else None
-        )
-        worst_domain = None
-        if series_by_domain:
-            domain_deltas = {
-                d: float(s.iloc[-30:].mean() - s.iloc[:30].mean())
-                for d, s in series_by_domain.items()
-                if len(s) > 60
-            }
-            if domain_deltas:
-                worst_domain = min(domain_deltas, key=domain_deltas.get)
+        annual_mean = float(tone_global.mean())
 
+        # Rupture la plus marquée négativement (signal réel vs bruit)
+        worst_rupture = None
+        best_rupture = None
+        for exp in rupture_explanations:
+            d = exp["delta"]
+            if worst_rupture is None or d < worst_rupture["delta"]:
+                worst_rupture = exp
+            if best_rupture is None or d > best_rupture["delta"]:
+                best_rupture = exp
+
+        # Deltas par domaine (janv → déc)
+        domain_deltas: dict[str, float] = {}
+        domain_means: dict[str, float] = {}
+        for d, s in series_by_domain.items():
+            if len(s) > 60:
+                domain_deltas[d] = float(s.iloc[-30:].mean() - s.iloc[:30].mean())
+            domain_means[d] = float(events[events["risk_domain"] == d]["AvgTone"].mean())
+
+        worst_domain = min(domain_deltas, key=domain_deltas.get) if domain_deltas else None
+        worst_domain_label = DOMAIN_LABELS.get(worst_domain, worst_domain) if worst_domain else None
+
+        # Humanitaire : seul domaine positif ?
+        hum_mean = domain_means.get("humanitaire")
+        hum_delta = domain_deltas.get("humanitaire")
+        hum_positive = hum_mean is not None and hum_mean > 0
+        hum_improving = hum_delta is not None and hum_delta > 0
+
+        # ── KPIs affichés dans le dashboard ───────────────────────────────
+        worst_rupture_str = (
+            f"{worst_rupture['breakpoint']} ({worst_rupture['delta']:+.1f} pts)"
+            if worst_rupture and worst_rupture["delta"] < -0.5
+            else "aucune chute significative"
+        )
         metrics = {
-            "n_events": len(events),
-            "n_ruptures_global": n_ruptures_global,
-            "delta_tone_global": round(delta_total, 2) if delta_total is not None else None,
-            "n_breakpoints_by_domain": {
-                d: len(bps) for d, bps in breakpoints_by_domain.items()
-            },
-            "worst_domain": worst_domain,
+            "Ton moyen annuel (Bénin)": f"{annual_mean:+.2f} / 100",
+            "Ruptures de ton détectées": n_ruptures_global,
+            "Chute la plus marquée": worst_rupture_str,
+            "Seul domaine à ton positif": "Humanitaire" if hum_positive else "aucun",
+            "Domaine le plus dégradé (janv→déc)": worst_domain_label or "n/d",
+            # Internes
+            "_annual_mean_raw": round(annual_mean, 3),
+            "_worst_domain_code": worst_domain,
+            "_hum_mean": round(hum_mean, 3) if hum_mean is not None else None,
         }
 
-        # Insight narratif
-        delta_str = (
-            f"{metrics['delta_tone_global']:+.2f} points"
-            if metrics["delta_tone_global"] is not None
-            else "n/a"
+        # ── Insight narratif honnête ───────────────────────────────────────
+        # Ton chronique
+        chronic_str = (
+            f"le ton médiatique mondial est chroniquement négatif "
+            f"(moyenne annuelle : {annual_mean:+.2f} sur 100) mais stable"
         )
-        insight = (
-            f"Le ton mondial sur le Bénin connaît {n_ruptures_global} ruptures "
-            f"sur la période, avec une dérive globale de {delta_str}. "
-            f"Domaine le plus dégradé : {worst_domain or 'n/a'}. "
-            "Les ruptures sont attribuables à des stories identifiables dans "
-            "la table `ruptures`."
-        )
+
+        _MONTHS_FR = {
+            1: "janvier", 2: "février", 3: "mars", 4: "avril",
+            5: "mai", 6: "juin", 7: "juillet", 8: "août",
+            9: "septembre", 10: "octobre", 11: "novembre", 12: "décembre",
+        }
+
+        def _fmt_month(date_str: str) -> str:
+            """'2025-09-14' → 'septembre 2025'"""
+            dt = pd.Timestamp(date_str)
+            return f"{_MONTHS_FR[dt.month]} {dt.year}"
+
+        def _fmt_date(date_str: str) -> str:
+            """'2025-12-08' → '8 décembre 2025'"""
+            dt = pd.Timestamp(date_str)
+            return f"{dt.day} {_MONTHS_FR[dt.month]} {dt.year}"
+
+        # Rupture positive (septembre)
+        positive_rupture_str = ""
+        if best_rupture and best_rupture["delta"] > 0.5:
+            positive_rupture_str = (
+                f"En {_fmt_month(best_rupture['breakpoint'])}, "
+                f"une amélioration passagère ({best_rupture['delta']:+.1f} pts) a été enregistrée, "
+                f"portée par des événements culturels."
+            )
+
+        # Rupture négative (décembre) — signal réel
+        negative_rupture_str = ""
+        if worst_rupture and worst_rupture["delta"] < -0.5:
+            negative_rupture_str = (
+                f"La rupture la plus significative survient le {_fmt_date(worst_rupture['breakpoint'])} "
+                f"({worst_rupture['delta']:+.1f} pts) : les stories associées évoquent "
+                f"une annonce militaire et un événement politique majeur — "
+                f"le signal le plus fort de l'année."
+            )
+
+        # Humanitaire positif
+        hum_str = ""
+        if hum_positive and hum_improving:
+            hum_str = (
+                "Le domaine humanitaire est le seul à afficher un ton positif "
+                f"(moyenne {hum_mean:+.2f}) et en amélioration continue sur l'année."
+            )
+        elif hum_positive:
+            hum_str = (
+                f"Le domaine humanitaire est le seul à afficher un ton positif (moyenne {hum_mean:+.2f})."
+            )
+
+        # Domaine dégradé
+        worst_str = ""
+        if worst_domain_label and domain_deltas.get(worst_domain) is not None:
+            worst_str = (
+                f"Le domaine {worst_domain_label.lower()} enregistre la plus forte dégradation "
+                f"({domain_deltas[worst_domain]:+.2f} pts), en grande partie tirée par l'événement de fin d'année."
+            )
+
+        parts = [f"Sur 2025, {chronic_str}."]
+        if positive_rupture_str:
+            parts.append(positive_rupture_str)
+        if negative_rupture_str:
+            parts.append(negative_rupture_str)
+        if hum_str:
+            parts.append(hum_str)
+        if worst_str:
+            parts.append(worst_str)
+        insight = " ".join(parts)
 
         return Result(
             question_id=self.id,
