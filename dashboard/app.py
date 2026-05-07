@@ -2,6 +2,7 @@ from pathlib import Path
 
 import pandas as pd
 import plotly.express as px
+import plotly.graph_objects as go
 import streamlit as st
 
 st.set_page_config(
@@ -707,7 +708,7 @@ h1h2 = build_h1h2_partners(df_view)
 if not h1h2.empty:
     st.markdown("<div class='section-title'>Évolution des partenariats H1 vs H2 2025</div>", unsafe_allow_html=True)
     h1h2_plot = h1h2.sort_values("total", ascending=True).tail(10)
-    import plotly.graph_objects as go
+    
     fig_h1h2 = go.Figure()
     fig_h1h2.add_trace(go.Bar(
         name="Jan–juin 2025 (H1)", y=h1h2_plot["actor1_country"],
