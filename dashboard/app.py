@@ -147,6 +147,22 @@ INTL_DOMAINS = {
     "voaafrique.com",
 }
 
+def classify_source(domain: str) -> str:
+    if not isinstance(domain, str) or not domain:
+        return "Unknown"
+    d = domain.lower()
+    if d in BENIN_DOMAINS:
+        return "Benin"
+    if d in NIGERIA_DOMAINS:
+        return "Nigeria"
+    if d in INTL_DOMAINS:
+        return "International"
+    if d.endswith(".bj"):
+        return "Benin"
+    if d.endswith(".ng"):
+        return "Nigeria"
+    return "Other"
+
 
 @st.cache_data(show_spinner=False)
 def load_data(path: Path) -> pd.DataFrame:
@@ -218,22 +234,6 @@ def load_data(path: Path) -> pd.DataFrame:
     df["source_origin"] = df["domain"].apply(classify_source)
     return df
 
-
-def classify_source(domain: str) -> str:
-    if not isinstance(domain, str) or not domain:
-        return "Unknown"
-    d = domain.lower()
-    if d in BENIN_DOMAINS:
-        return "Benin"
-    if d in NIGERIA_DOMAINS:
-        return "Nigeria"
-    if d in INTL_DOMAINS:
-        return "International"
-    if d.endswith(".bj"):
-        return "Benin"
-    if d.endswith(".ng"):
-        return "Nigeria"
-    return "Other"
 
 
 def safe_mean(series: pd.Series) -> float:
@@ -597,10 +597,13 @@ if not monthly.empty:
         annee = peak["month"].year
         if peak["is_anomaly"]:
             pulse_text = (
+                if peak["is_anomaly"]:
+            pulse_text = (
                 f"Le pic de <strong>{mois_fr} {annee}</strong> est le signal le plus fort de l'année : "
                 f"<strong>{peak['count']:,} événements</strong>, soit ×{peak['ratio']} le volume médian mensuel. "
                 f"Le ton moyen ce mois-là chute à <strong>{peak['tone']:+.2f}</strong>, confirmant un événement "
-                f"de rupture. Les sources internationales (AFP, BBC, Jiji Africa) convergent sur "
+                f"de rupture — pic à fort signal négatif, possiblement lié à un événement politique majeur."
+                f"Les sources internationales (AFP, BBC, Jiji Africa) convergent sur "
                 f"une <strong>tentative de coup d'État déjouée</strong>."
             )
         else:
@@ -828,7 +831,9 @@ if peak and peak["is_anomaly"]:
     insights_items.append(
         f"<strong>Signal exceptionnel en {mois_fr} {peak['month'].year}</strong> : "
         f"{peak['count']:,} événements, soit ×{peak['ratio']} le volume médian. "
-        f"Le ton chute à {peak['tone']:+.2f}. Les dépêches AFP et BBC identifient "
+        f"Le ton chute à {peak['tone']:+.2f} — pic négatif sans équivalent sur l'année, "
+        f"corrélé à un événement politique majeur selon les sources internationales."
+        f"Les dépêches AFP et BBC identifient "
         f"une <strong>tentative de coup d'État déjouée</strong> — événement sans équivalent sur l'année."
     )
 
