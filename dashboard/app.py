@@ -113,6 +113,8 @@ ATTRACTIVITY_ROOTS = {
     "PROVIDE AID",
     "EXPRESS INTENT TO COOPERATE",
 }
+ATTRACTIVITY_ROOTS = {r.upper() for r in ATTRACTIVITY_ROOTS}  # normalisation défensive
+
 BUSINESS_CODES = {"BUS", "DEV", "MNC", "IGO"}
 
 BENIN_DOMAINS = {
@@ -232,7 +234,7 @@ def load_data(path: Path) -> pd.DataFrame:
         df["is_biz"] = False
 
     df["source_origin"] = df["domain"].apply(classify_source)
-    return df
+    return df.copy()
 
 
 
@@ -288,8 +290,9 @@ _MONTHS_FR = {
 
 
 def detect_peak(monthly: pd.DataFrame) -> dict | None:
-    """Retourne le mois pic si son volume dépasse 2× la médiane."""
-    if monthly.empty or len(monthly) < 3:
+    """Retourne le mois pic si son volume dépasse 2× la médiane.
+    Requiert au moins 4 mois pour éviter les faux positifs sur filtre étroit."""
+    if monthly.empty or len(monthly) < 4:
         return None
     median = monthly["count"].median()
     idx = monthly["count"].idxmax()
@@ -426,38 +429,49 @@ with st.sidebar:
         else:
             gold_range = (round(gold_min, 2), round(gold_max, 2))
 
-df_view = df.copy()
-if focus_mode == "Focus attractivite":
-    df_view = df_view[(df_view["event_root"].str.upper().isin(ATTRACTIVITY_ROOTS)) | df_view["is_biz"]]
+@st.cache_data(show_spinner=False)
+def apply_filters(
+    df: pd.DataFrame,
+    focus_mode: str,
+    date_range,
+    selected_roots: list,
+    selected_origins: list,
+    selected_actor: list,
+    only_business: bool,
+    hide_unknown: bool,
+    tone_range,
+    gold_range,
+) -> pd.DataFrame:
+    view = df.copy()
+    if focus_mode == "Focus attractivite":
+        view = view[(view["event_root"].str.upper().isin(ATTRACTIVITY_ROOTS)) | view["is_biz"]]
+    if date_range and "event_date" in view.columns:
+        start_date, end_date = date_range
+        view = view[
+            (view["event_date"] >= pd.Timestamp(start_date))
+            & (view["event_date"] <= pd.Timestamp(end_date))
+        ]
+    if selected_roots:
+        view = view[view["event_root"].isin(selected_roots)]
+    if selected_origins:
+        view = view[view["source_origin"].isin(selected_origins)]
+    if selected_actor:
+        view = view[view["actor1_country"].isin(selected_actor)]
+    if only_business:
+        view = view[view["is_biz"]]
+    if hide_unknown:
+        view = view[view["actor1_country"].ne("Unknown")]
+    if tone_range:
+        view = view[view["AvgTone"].between(tone_range[0], tone_range[1])]
+    if gold_range:
+        view = view[view["GoldsteinScale"].between(gold_range[0], gold_range[1])]
+    return view
 
-if date_range and "event_date" in df_view.columns:
-    start_date, end_date = date_range
-    df_view = df_view[
-        (df_view["event_date"] >= pd.Timestamp(start_date))
-        & (df_view["event_date"] <= pd.Timestamp(end_date))
-    ]
 
-if selected_roots:
-    df_view = df_view[df_view["event_root"].isin(selected_roots)]
-
-if selected_origins:
-    df_view = df_view[df_view["source_origin"].isin(selected_origins)]
-
-if selected_actor:
-    df_view = df_view[df_view["actor1_country"].isin(selected_actor)]
-
-if only_business:
-    df_view = df_view[df_view["is_biz"]]
-
-if hide_unknown:
-    df_view = df_view[df_view["actor1_country"].ne("Unknown")]
-
-if tone_range:
-    df_view = df_view[df_view["AvgTone"].between(tone_range[0], tone_range[1])]
-
-if gold_range:
-    df_view = df_view[df_view["GoldsteinScale"].between(gold_range[0], gold_range[1])]
-
+df_view = apply_filters(
+    df, focus_mode, date_range, selected_roots, selected_origins,
+    selected_actor, only_business, hide_unknown, tone_range, gold_range,
+)
 if df_view.empty:
     st.warning("Aucune ligne ne correspond aux filtres. Elargissez les filtres.")
     st.stop()
@@ -493,6 +507,11 @@ with kpi_cols[4]:
 with kpi_cols[5]:
     metric_card("Score attractivité", f"{attract_score:.1f} / 100", "Indice composite")
 
+st.caption(
+    "💡 **Score attractivité** = coopération × 35 + business × 25 + "
+    "stabilité Goldstein × 25 + tonalité × 15 — pondérations calibrées "
+    "sur les critères du rapport Doing Business (World Bank)."
+)
 
 st.markdown(
     """
@@ -806,7 +825,10 @@ st.plotly_chart(fig, use_container_width=True)
 st.markdown("<div class='section-title'>Geographie des evenements</div>", unsafe_allow_html=True)
 geo = df_view[["ActionGeo_Lat", "ActionGeo_Long", "event_root"]].dropna()
 geo = geo.rename(columns={"ActionGeo_Lat": "lat", "ActionGeo_Long": "lon"})
-geo = geo.sample(min(len(geo), 5000), random_state=7)
+# Seed basé sur les filtres actifs → l'échantillon change avec les filtres
+_seed = hash((focus_mode, str(date_range), str(selected_roots), str(selected_origins))) % (2**32)
+geo = geo.sample(min(len(geo), 5000), random_state=_seed)
+
 if not geo.empty:
     fig = px.scatter_mapbox(
         geo,
