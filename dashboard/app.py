@@ -639,8 +639,6 @@ if not monthly.empty:
         annee = peak["month"].year
         if peak["is_anomaly"]:
             pulse_text = (
-                if peak["is_anomaly"]:
-            pulse_text = (
                 f"Le pic de <strong>{mois_fr} {annee}</strong> est le signal le plus fort de l'année : "
                 f"<strong>{peak['count']:,} événements</strong>, soit ×{peak['ratio']} le volume médian mensuel. "
                 f"Le ton moyen ce mois-là chute à <strong>{peak['tone']:+.2f}</strong>, confirmant un événement "
@@ -857,7 +855,67 @@ if not monthly.empty:
         peak_month = monthly.loc[monthly["count"].idxmax(), "month"].strftime("%b %Y")
 
 
+st.markdown("<div class='section-title'>Recommandations</div>", unsafe_allow_html=True)
+
+reco_items = []
+
+# 1. Basé sur le score d'attractivité
+if attract_score >= 60:
+    reco_items.append(
+        " <strong>Capitaliser sur le profil coopératif</strong> : le Bénin affiche un signal "
+        "d'attractivité solide. Prioriser la communication vers les partenaires dont le ton "
+        "est positif et le volume en hausse en H2."
+    )
+else:
+    reco_items.append(
+        " <strong>Renforcer le signal de stabilité</strong> : le score d'attractivité composite "
+        "reste sous 60/100. Augmenter la visibilité des actions diplomatiques et économiques "
+        "auprès des médias internationaux."
+    )
+
+# 2. Basé sur le pic médiatique
+peak_check = detect_peak(build_monthly(df_view))
+if peak_check and peak_check["is_anomaly"] and peak_check["tone"] < -1:
+    reco_items.append(
+        " <strong>Gestion de crise médiatique</strong> : un pic négatif exceptionnel a été détecté. "
+        "Mettre en place un dispositif de communication de crise proactif pour réduire "
+        "l'impact sur la perception internationale du pays."
+    )
+
+# 3. Basé sur les partenaires H1/H2
+h1h2_reco = build_h1h2_partners(df_view)
+if not h1h2_reco.empty:
+    top_gainer = h1h2_reco[h1h2_reco["H2"] > h1h2_reco["H1"]].nlargest(1, "delta_pct")
+    if not top_gainer.empty:
+        g = top_gainer.iloc[0]
+        reco_items.append(
+            f" <strong>Consolider le partenariat avec {g['actor1_country']}</strong> : "
+            f"ce pays affiche la plus forte progression en H2 (+{g['delta_pct']:.0f} %). "
+            f"Opportunité à saisir pour des accords bilatéraux ou des IDE."
+        )
+
+# 4. Basé sur la part business
+if biz_share < 0.10:
+    reco_items.append(
+        " <strong>Renforcer la visibilité économique</strong> : la part des acteurs business "
+        "dans la couverture GDELT est inférieure à 10 %. Multiplier les événements à forte "
+        "couverture internationale (forums d'investissement, partenariats MNC)."
+    )
+elif biz_share >= 0.20:
+    reco_items.append(
+        " <strong>Maintenir la dynamique business</strong> : avec plus de 20 % d'acteurs "
+        "économiques dans la couverture, le Bénin est bien positionné pour attirer des IDE. "
+        "Consolider par des rapports de transparence accessibles aux investisseurs étrangers."
+    )
+
+reco_html = "".join(f"<li style='margin-bottom:0.8rem'>{r}</li>" for r in reco_items)
+st.markdown(
+    f'<div class="callout"><ul style="padding-left:1.2rem;margin:0">{reco_html}</ul></div>',
+    unsafe_allow_html=True,
+)
+
 st.markdown("<div class='section-title'>Limites et biais à connaître</div>", unsafe_allow_html=True)
+
 st.markdown(
     """
 <div class="story-block">
@@ -960,3 +1018,81 @@ st.markdown(
     "<div class='note'>Dataset: data/GDELT_events_benin_2025_cleaned.csv</div>",
     unsafe_allow_html=True,
 )
+
+
+# ── Codes CAMEO liés au tourisme et à l'image destination ──
+TOURISM_ROOTS = {"CONSULT", "ENGAGE IN DIPLOMATIC COOPERATION",
+                 "PROVIDE AID", "EXPRESS INTENT TO COOPERATE",
+                 "MAKE PUBLIC STATEMENT"}
+TOURISM_ACTOR_TYPES = {"TUR", "CVL", "NGO", "MED"}
+
+st.markdown("<div class='section-title'>Attractivité touristique</div>", unsafe_allow_html=True)
+
+tour_df = df_view[
+    df_view["event_root"].str.upper().isin(TOURISM_ROOTS)
+].copy()
+
+if "Actor1Type1Code" in tour_df.columns:
+    tour_df = tour_df[
+        tour_df["Actor1Type1Code"].isin(TOURISM_ACTOR_TYPES) |
+        tour_df["Actor2Type1Code"].isin(TOURISM_ACTOR_TYPES) |
+        tour_df["event_root"].str.upper().isin(TOURISM_ROOTS)
+    ]
+
+if tour_df.empty:
+    st.info("Aucun événement touristique détecté avec les filtres actifs.")
+else:
+    t_left, t_right = st.columns(2)
+
+    tour_monthly = (
+        tour_df.groupby("month", as_index=False)
+        .agg(count=("GLOBALEVENTID", "count"), avg_tone=("AvgTone", "mean"))
+        .sort_values("month")
+    )
+
+    with t_left:
+        fig_tour = px.bar(
+            tour_monthly,
+            x="month",
+            y="count",
+            color="avg_tone",
+            color_continuous_scale=["#d18f2b", "#1e6f78"],
+            title="Couverture mensuelle — image destination",
+        )
+        fig_tour.update_layout(height=320, xaxis_title="", yaxis_title="Événements")
+        st.plotly_chart(fig_tour, use_container_width=True)
+
+    tour_origins = (
+        tour_df.groupby("source_origin", as_index=False)
+        .agg(count=("GLOBALEVENTID", "count"))
+        .sort_values("count", ascending=False)
+    )
+
+    with t_right:
+        fig_orig = px.pie(
+            tour_origins,
+            names="source_origin",
+            values="count",
+            hole=0.5,
+            color_discrete_sequence=["#1e6f78", "#d18f2b", "#0d6b3f", "#7b7b7b"],
+            title="Origine des sources — image destination",
+        )
+        fig_orig.update_layout(height=320)
+        st.plotly_chart(fig_orig, use_container_width=True)
+
+    tour_tone = safe_mean(tour_df["AvgTone"])
+    tour_gold = safe_mean(tour_df["GoldsteinScale"])
+    tone_label = "positif" if tour_tone > 0 else "légèrement négatif" if tour_tone > -1 else "négatif"
+
+    st.markdown(
+        f"""
+<div class="story-block">
+  Sur <strong>{len(tour_df):,} événements</strong> liés à l'image destination du Bénin,
+  le ton moyen est <strong>{tour_tone:+.2f}</strong> ({tone_label}) avec un Goldstein
+  à <strong>{tour_gold:+.2f}</strong>.<br><br>
+  {" Signal favorable : la couverture de l'image touristique du Bénin est globalement positive, ce qui renforce son positionnement comme destination émergente en Afrique de l'Ouest." if tour_tone > 0 else "⚠ Signal mitigé : la couverture de l'image destination reste en territoire négatif — à surveiller pour l'attractivité touristique."}
+</div>
+""",
+        unsafe_allow_html=True,
+    )
+    
