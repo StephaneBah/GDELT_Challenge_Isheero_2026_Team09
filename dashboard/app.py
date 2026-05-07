@@ -5,6 +5,14 @@ import plotly.express as px
 import plotly.graph_objects as go
 import streamlit as st
 
+# Lire les params à l'init
+params = st.query_params
+focus_default = params.get("focus", "Focus attractivite")
+
+# Écrire les params à chaque changement
+st.query_params["focus"] = focus_mode
+st.query_params["roots"] = ",".join(selected_roots)
+
 st.set_page_config(
     page_title="Observatoire mediatique du Benin",
     layout="wide",
