@@ -51,9 +51,12 @@ with open(file_path, 'r', encoding='utf-8') as f:
 
 print(f"--- INSIGHTS BÉNIN ---")
 print(f"Total des évènements: {total_events}")
-print(f"Tonalité Globale Moyenne: {total_tone/total_events:.2f} (Échelle de l'article)")
-print(f"Score Goldstein Moyen: {total_goldstein/total_events:.2f} (Échelle de stabilité)")
-
+if total_events == 0:
+    print("Aucun événement trouvé — vérifiez le chemin du fichier.")
+else:
+    print(f"Tonalité Globale Moyenne: {total_tone/total_events:.2f} (Échelle de l'article)")
+    print(f"Score Goldstein Moyen: {total_goldstein/total_events:.2f} (Échelle de stabilité)")
+    
 print("\n--- TOP 5 PAYS S'INTERRESSANT AU BÉNIN ---")
 top_countries = sorted(country_mentions.items(), key=lambda x: x[1]['count'], reverse=True)[:5]
 for c, stats in top_countries:
