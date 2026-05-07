@@ -467,7 +467,19 @@ avg_gold = safe_mean(df_view["GoldsteinScale"])
 biz_share = float(df_view["is_biz"].mean()) if "is_biz" in df_view.columns else 0.0
 coop_share = float((df_view["quad_label"].str.contains("Cooperation", na=False)).mean())
 
-kpi_cols = st.columns(5)
+gold_norm = min(max((avg_gold + 10) / 20, 0), 1)  # GoldsteinScale ∈ [-10, 10] → [0, 1]
+tone_norm = min(max((avg_tone + 20) / 40, 0), 1)  # AvgTone ∈ [-20, 20] → [0, 1]
+attract_score = round(coop_share * 35 + biz_share * 25 + gold_norm * 25 + tone_norm * 15, 1)
+
+st.download_button(
+    label="⬇ Télécharger les données filtrées",
+    data=df_view.to_csv(index=False).encode("utf-8"),
+    file_name="benin_gdelt_filtered.csv",
+    mime="text/csv",
+    help="Exporte les événements correspondant aux filtres actifs",
+)
+
+kpi_cols = st.columns(6)
 with kpi_cols[0]:
     metric_card("Evenements", f"{len(df_view):,}", "Couverture filtree")
 with kpi_cols[1]:
@@ -478,6 +490,9 @@ with kpi_cols[3]:
     metric_card("Part cooperation", f"{coop_share:.0%}", "QuadClass 1-2")
 with kpi_cols[4]:
     metric_card("Part business", f"{biz_share:.0%}", "Acteurs investissement")
+with kpi_cols[5]:
+    metric_card("Score attractivité", f"{attract_score:.1f} / 100", "Indice composite")
+
 
 st.markdown(
     """
@@ -696,15 +711,29 @@ country_stats = (
     .sort_values("count", ascending=False)
     .head(12)
 )
+fig_map = px.choropleth(
+    country_stats,
+    locations="actor1_country",
+    locationmode="country names",
+    color="count",
+    hover_name="actor1_country",
+    hover_data={"avg_tone": ":.2f"},
+    color_continuous_scale=["#f1d9b1", "#1e6f78"],
+    title="Présence des partenaires dans la couverture GDELT",
+)
+fig_map.update_layout(height=420, geo=dict(showframe=False, showcoastlines=True))
+st.plotly_chart(fig_map, use_container_width=True)
+
+# Bar chart en dessous pour garder le détail chiffré
 fig = px.bar(
     country_stats,
     x="actor1_country",
     y="count",
     color="avg_tone",
     color_continuous_scale="RdYlGn",
-    title="Top partenaires (Actor1) sur les themes de cooperation",
+    title="Top partenaires — détail",
 )
-fig.update_layout(height=360, xaxis_title="Pays partenaire", yaxis_title="Evenements")
+fig.update_layout(height=320, xaxis_title="Pays partenaire", yaxis_title="Evenements")
 st.plotly_chart(fig, use_container_width=True)
 
 h1h2 = build_h1h2_partners(df_view)
@@ -796,6 +825,27 @@ top_actor = country_stats["actor1_country"].iloc[0] if not country_stats.empty e
 peak_month = "Unknown"
 if not monthly.empty:
         peak_month = monthly.loc[monthly["count"].idxmax(), "month"].strftime("%b %Y")
+
+
+st.markdown("<div class='section-title'>Limites et biais à connaître</div>", unsafe_allow_html=True)
+st.markdown(
+    """
+<div class="story-block">
+    <ul>
+        <li><strong>Biais anglophone</strong> : GDELT sur-représente les sources en anglais.
+        Les médias francophones béninois sont sous-capturés, ce qui minore la couverture locale réelle.</li>
+        <li><strong>Biais nigérian</strong> : les médias .ng génèrent un volume élevé d'événements
+        liés à "Benin City" (Nigeria). Le pipeline de filtrage URL réduit ce bruit mais ne l'élimine pas à 100 %.</li>
+        <li><strong>GDELT ≠ réalité</strong> : un événement très couvert ne signifie pas qu'il est plus important —
+        il signifie qu'il a généré plus d'articles. Le volume est un signal médiatique, pas un fait brut.</li>
+        <li><strong>Classify_source</strong> : la classification des sources (Bénin / Nigeria / International)
+        repose sur une liste fixe de domaines connus. Les nouveaux médias ou les agrégateurs non répertoriés
+        tombent dans "Other".</li>
+    </ul>
+</div>
+""",
+    unsafe_allow_html=True,
+)
 
 st.markdown("<div class='section-title'>Glossaire rapide</div>", unsafe_allow_html=True)
 st.markdown(
