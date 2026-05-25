@@ -24,3 +24,4 @@ seaborn>=0.13.0
 # --- Notebooks ---
 jupyterlab>=4.0.0
 ipykernel>=6.29.0
+nbconvert>=7.17.1
