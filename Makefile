@@ -1,4 +1,19 @@
-.PHONY: install install-ml run clean
+# ========== Makefile ==========
+#
+# Utilisation :
+#   make install      -> crée le venv + installe requirements.txt
+#   make install-ml   -> installe les dépendances ML
+#   make run          -> lance l'application Streamlit
+#   make clean        -> supprime les fichiers temporaires
+#
+# Exemple :
+#   make setup
+#	make run 
+# ========================================
+
+.PHONY: setup install install-ml run clean
+
+setup: install install-ml
 
 install:
 	python3.11 -m venv .venv
@@ -13,3 +28,4 @@ run:
 
 clean:
 	rm -rf .venv __pycache__ .pytest_cache
+
