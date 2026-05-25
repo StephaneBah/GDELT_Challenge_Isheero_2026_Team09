@@ -1,9 +1,8 @@
-# Bénin Insights — dépendances core (suffisent pour pipeline + dashboard).
+# Bénin Insights — dépendances core
 # Installation : `make install` (crée .venv si nécessaire et installe ici).
 #
 # Pour la validation sentiment (xlm-roberta) du notebook :
-#   `make install-ml` (requirements-ml.txt — plus lourd, parfois capricieux
-#   selon la version de Python).
+#   `make install-ml` (requirements-ml.txt)
 
 # --- Données : extraction & stockage ---
 google-cloud-bigquery>=3.20.0
@@ -24,7 +23,8 @@ plotly>=5.18.0
 matplotlib>=3.8.0
 scipy>=1.12.0
 seaborn>=0.13.0
-# --- ML léger (utilisé dans questions Q2 et Q3) ---
+
+# --- ML ---
 scikit-learn>=1.4.0
 ruptures>=1.1.9
 networkx>=3.2
