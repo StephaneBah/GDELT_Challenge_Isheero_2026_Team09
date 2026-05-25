@@ -1,3 +1,10 @@
+# Validation sentiment (xlm-roberta) :
+#   `make install-ml` (requirements-ml.txt)
+# --- ML ---
+scikit-learn>=1.4.0
+ruptures>=1.1.9
+networkx>=3.2
+python-louvain>=0.16
 transformers>=4.38.0
 torch>=2.2.0
 sentencepiece>=0.1.99
