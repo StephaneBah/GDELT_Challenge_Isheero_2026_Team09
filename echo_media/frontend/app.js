@@ -63,11 +63,26 @@ createApp({
     const currentSummary = ref(null)  // summary du dernier bloc principal
 
     const sectors = [
-      { id: 'economie',    label: 'Économie',    desc: 'Échanges, sanctions, aide éco.' },
-      { id: 'diplomatie',  label: 'Diplomatie',  desc: 'Visites, négociations, ruptures' },
-      { id: 'cooperation', label: 'Coopération', desc: 'Aide fournie, accords, cessions' },
-      { id: 'conflits',    label: 'Conflits',    desc: 'Menaces, combats, coercitions' },
-      { id: 'libre',       label: 'Exploration', desc: 'Tous secteurs' },
+      {
+        id: 'economie', label: 'Économie', desc: 'Échanges, sanctions, aide éco.',
+        icon: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>`,
+      },
+      {
+        id: 'diplomatie', label: 'Diplomatie', desc: 'Visites, négociations, ruptures',
+        icon: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>`,
+      },
+      {
+        id: 'cooperation', label: 'Coopération', desc: 'Aide fournie, accords, cessions',
+        icon: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>`,
+      },
+      {
+        id: 'conflits', label: 'Conflits', desc: 'Menaces, combats, coercitions',
+        icon: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>`,
+      },
+      {
+        id: 'libre', label: 'Exploration', desc: 'Tous secteurs',
+        icon: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>`,
+      },
     ]
 
     const currentSectorLabel = computed(
@@ -93,7 +108,14 @@ createApp({
 
     function renderCharts(blockIdx, chartsData) {
       const cfg = { responsive: true, displayModeBar: false }
-      setTimeout(() => {
+
+      // Attend que les divs soient dans le DOM avec des dimensions réelles
+      function tryRender(attempt = 0) {
+        const el = document.getElementById(`tension-${blockIdx}`)
+        if (!el || el.offsetWidth === 0) {
+          if (attempt < 20) setTimeout(() => tryRender(attempt + 1), 80)
+          return
+        }
         if (chartsData.tension) {
           const s = JSON.parse(chartsData.tension)
           Plotly.newPlot(`tension-${blockIdx}`, s.data, s.layout, cfg)
@@ -106,7 +128,9 @@ createApp({
           const s = JSON.parse(chartsData.signal)
           Plotly.newPlot(`signal-${blockIdx}`, s.data, s.layout, cfg)
         }
-      }, 60)
+      }
+
+      nextTick(() => tryRender())
     }
 
     // ── Pipeline principal ────────────────────────────────────────────────────

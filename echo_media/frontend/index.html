@@ -13,9 +13,7 @@
 <body>
 <div id="app">
 
-  <!-- ══════════════════════════════════════════════════════════
-       LANDING
-  ═══════════════════════════════════════════════════════════ -->
+  <!-- ══════════ LANDING ══════════════════════════════════════ -->
   <transition name="fade">
   <div class="landing" v-if="phase === 'landing'">
     <div class="landing-center">
@@ -31,6 +29,7 @@
           :class="{ active: selectedSector === s.id }"
           @click="selectedSector = s.id"
         >
+          <span class="sector-icon" v-html="s.icon"></span>
           <span class="sector-name">{{ s.label }}</span>
           <span class="sector-desc">{{ s.desc }}</span>
         </button>
@@ -44,6 +43,7 @@
           rows="2"
         ></textarea>
         <button class="btn-launch" @click="startAnalysis" :disabled="!canStart">
+          <!-- arrow-right -->
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
         </button>
       </div>
@@ -54,25 +54,20 @@
   </div>
   </transition>
 
-  <!-- ══════════════════════════════════════════════════════════
-       CHAT + DASHBOARD
-  ═══════════════════════════════════════════════════════════ -->
+  <!-- ══════════ CHAT ══════════════════════════════════════════ -->
   <transition name="rise">
   <div class="chat-view" v-if="phase === 'chat'">
 
-    <!-- Header minimal -->
     <header class="chat-header">
       <button class="btn-back" @click="reset">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg>
+        <!-- chevron-left -->
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
       </button>
       <span class="header-title">Echo<em>Média</em></span>
       <span class="header-sector">{{ currentSectorLabel }}</span>
     </header>
 
-    <!-- Flux de conversation -->
     <div class="chat-stream" ref="streamEl">
-
-      <!-- Chaque bloc = un échange complet -->
       <div v-for="(block, i) in blocks" :key="i" class="block">
 
         <!-- Question utilisateur -->
@@ -80,101 +75,139 @@
           <span>{{ block.question }}</span>
         </div>
 
-        <!-- Réponse système : KPIs + Charts + Rapports + Suggestions -->
+        <!-- Bloc assistant : KPIs + Charts + Rapports + Suggestions -->
         <div class="assistant-block" v-if="block.ready || block.streaming">
 
-          <!-- KPIs inline -->
+          <!-- KPI strip -->
           <div class="kpi-strip" v-if="block.summary">
             <div class="kpi-item">
+              <!-- trending-up / trending-down -->
+              <svg class="kpi-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline v-if="block.summary.avg_tone >= 0" points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline v-else points="23 18 13.5 8.5 8.5 13.5 1 6"/><polyline v-if="block.summary.avg_tone >= 0" points="17 6 23 6 23 12"/><polyline v-else points="17 18 23 18 23 12"/></svg>
               <span class="kpi-v" :class="toneClass(block.summary.avg_tone)">{{ block.summary.avg_tone > 0 ? '+' : '' }}{{ block.summary.avg_tone }}</span>
               <span class="kpi-l">Ton</span>
             </div>
             <div class="kpi-sep"></div>
             <div class="kpi-item">
+              <!-- activity -->
+              <svg class="kpi-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
               <span class="kpi-v" :class="goldClass(block.summary.avg_goldstein)">{{ block.summary.avg_goldstein > 0 ? '+' : '' }}{{ block.summary.avg_goldstein }}</span>
               <span class="kpi-l">Goldstein</span>
             </div>
             <div class="kpi-sep"></div>
             <div class="kpi-item">
+              <!-- thermometer -->
+              <svg class="kpi-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 14.76V3.5a2.5 2.5 0 0 0-5 0v11.26a4.5 4.5 0 1 0 5 0z"/></svg>
               <span class="kpi-v" :class="tensionClass(block.summary.avg_tension)">{{ block.summary.avg_tension }}<small>/100</small></span>
               <span class="kpi-l">Tension</span>
             </div>
             <div class="kpi-sep"></div>
             <div class="kpi-item">
+              <!-- layers -->
+              <svg class="kpi-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg>
               <span class="kpi-v neutral">{{ block.summary.total_events?.toLocaleString('fr') }}</span>
               <span class="kpi-l">Événements</span>
             </div>
             <div class="anomaly-pill" v-if="block.summary.anomaly_months?.length">
-              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+              <!-- alert-circle -->
+              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
               {{ block.summary.anomaly_months.length }} anomalie{{ block.summary.anomaly_months.length > 1 ? 's' : '' }}
             </div>
           </div>
 
-          <!-- Graphiques inline -->
+          <!-- Charts -->
           <div class="charts-inline" v-if="block.chartsRendered">
             <div class="chart-wrap">
-              <div class="chart-title">Tension mensuelle</div>
+              <div class="chart-title">
+                <!-- bar-chart-2 -->
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
+                Tension mensuelle
+              </div>
               <div :id="'tension-' + i" class="chart-el"></div>
             </div>
             <div class="chart-wrap">
-              <div class="chart-title">Perception × Stabilité</div>
+              <div class="chart-title">
+                <!-- scatter-chart -->
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="7.5" cy="7.5" r="1.5"/><circle cx="18.5" cy="5.5" r="1.5"/><circle cx="11.5" cy="11.5" r="1.5"/><circle cx="7.5" cy="16.5" r="1.5"/><circle cx="17.5" cy="14.5" r="1.5"/><path d="M3 3v18h18"/></svg>
+                Perception × Stabilité
+              </div>
               <div :id="'bubble-' + i" class="chart-el"></div>
             </div>
             <div class="chart-wrap chart-full">
-              <div class="chart-title">Signal médiatique</div>
+              <div class="chart-title">
+                <!-- trending-up -->
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>
+                Signal médiatique — Volume, Ton &amp; Stabilité
+              </div>
               <div :id="'signal-' + i" class="chart-el"></div>
             </div>
           </div>
 
-          <!-- Rapports en streaming -->
+          <!-- Rapports -->
           <div class="reports-row" v-if="block.r1 || block.streamR1 || block.r2 || block.streamR2">
             <div class="report" v-if="block.r1 || block.streamR1">
               <div class="report-label">
-                <span class="dot r1-dot"></span>Tendances &amp; Anomalies
+                <span class="dot r1-dot"></span>
+                <!-- bar-chart -->
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="20" x2="12" y2="10"/><line x1="18" y1="20" x2="18" y2="4"/><line x1="6" y1="20" x2="6" y2="16"/></svg>
+                Tendances &amp; Anomalies
               </div>
               <div class="report-text" v-html="md(block.r1 || block.streamR1)"></div>
             </div>
             <div class="report" v-if="block.r2 || block.streamR2">
               <div class="report-label">
-                <span class="dot r2-dot"></span>Croisement sources
+                <span class="dot r2-dot"></span>
+                <!-- link -->
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+                Croisement sources
               </div>
               <div class="report-text" v-html="md(block.r2 || block.streamR2)"></div>
               <div class="sources" v-if="block.urls?.length && block.r2">
+                <!-- external-link -->
+                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
                 <a v-for="u in block.urls" :key="u" :href="u" target="_blank">{{ shortUrl(u) }}</a>
               </div>
             </div>
           </div>
 
-          <!-- Skeletons pendant chargement -->
-          <div class="loading-reports" v-if="!block.r1 && !block.streamR1 && block.loadingR">
-            <div class="sk-report"></div>
-            <div class="sk-report"></div>
-          </div>
+          <div class="loading-reports" v-if="!block.r1 && !block.streamR1 && block.loadingR"></div>
 
           <!-- Suggestions -->
           <div class="suggestions" v-if="block.suggestions?.length && block.ready">
-            <button v-for="s in block.suggestions" :key="s" class="sugg" @click="askFollowup(s)">{{ s }}</button>
+            <div class="sugg-hint">
+              <!-- compass -->
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76"/></svg>
+              Continuer l'exploration
+            </div>
+            <div class="sugg-list">
+              <button v-for="s in block.suggestions" :key="s" class="sugg" @click="askFollowup(s)">{{ s }}</button>
+            </div>
           </div>
 
         </div>
 
-        <!-- Réponse follow-up (texte seul) -->
+        <!-- Réponse follow-up (texte) -->
         <div class="followup-answer" v-if="block.answer || block.streamAnswer">
           <div v-html="md(block.answer || block.streamAnswer)"></div>
+          <div class="suggestions" v-if="block.suggestions?.length && block.ready" style="margin-top:.8rem">
+            <div class="sugg-hint">
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76"/></svg>
+              Continuer
+            </div>
+            <div class="sugg-list">
+              <button v-for="s in block.suggestions" :key="s" class="sugg" @click="askFollowup(s)">{{ s }}</button>
+            </div>
+          </div>
         </div>
 
       </div>
 
-      <!-- Block en cours de chargement initial -->
+      <!-- Bloc en cours -->
       <div class="block" v-if="loadingBlock">
         <div class="user-msg"><span>{{ pendingQuestion }}</span></div>
         <div class="assistant-block">
-          <div class="thinking">
-            <span></span><span></span><span></span>
-          </div>
+          <div class="thinking"><span></span><span></span><span></span></div>
         </div>
       </div>
-
     </div>
 
     <!-- Input bas de page -->
