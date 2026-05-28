@@ -74,3 +74,4 @@ logs/
 
 # OS
 Thumbs.db
+ANTHROPIC_API_KEY

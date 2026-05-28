@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Echo Média</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,wght@0,400;0,600;0,700;1,400&family=Space+Grotesk:wght@300;400;500;600&display=swap" rel="stylesheet" />
+  <script src="https://cdn.jsdelivr.net/npm/vue@3/dist/vue.esm-browser.prod.js" type="module"></script>
+  <script src="https://cdn.plot.ly/plotly-2.32.0.min.js"></script>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+<div id="app">
+
+  <!-- ══════════════════════════════════════════════════════════
+       LANDING
+  ═══════════════════════════════════════════════════════════ -->
+  <transition name="fade">
+  <div class="landing" v-if="phase === 'landing'">
+    <div class="landing-center">
+
+      <p class="eyebrow">Bénin · GDELT 2025</p>
+      <h1 class="title">Echo<em>Média</em></h1>
+      <p class="subtitle">Dialoguez avec l'empreinte médiatique internationale du Bénin.</p>
+
+      <div class="sectors">
+        <button
+          v-for="s in sectors" :key="s.id"
+          class="sector-btn"
+          :class="{ active: selectedSector === s.id }"
+          @click="selectedSector = s.id"
+        >
+          <span class="sector-name">{{ s.label }}</span>
+          <span class="sector-desc">{{ s.desc }}</span>
+        </button>
+      </div>
+
+      <div class="landing-input">
+        <textarea
+          v-model="firstMessage"
+          placeholder="Quelle est votre question ou angle d'analyse ?"
+          @keydown.enter.prevent="startAnalysis"
+          rows="2"
+        ></textarea>
+        <button class="btn-launch" @click="startAnalysis" :disabled="!canStart">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+        </button>
+      </div>
+
+    </div>
+    <div class="orb-1"></div>
+    <div class="orb-2"></div>
+  </div>
+  </transition>
+
+  <!-- ══════════════════════════════════════════════════════════
+       CHAT + DASHBOARD
+  ═══════════════════════════════════════════════════════════ -->
+  <transition name="rise">
+  <div class="chat-view" v-if="phase === 'chat'">
+
+    <!-- Header minimal -->
+    <header class="chat-header">
+      <button class="btn-back" @click="reset">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg>
+      </button>
+      <span class="header-title">Echo<em>Média</em></span>
+      <span class="header-sector">{{ currentSectorLabel }}</span>
+    </header>
+
+    <!-- Flux de conversation -->
+    <div class="chat-stream" ref="streamEl">
+
+      <!-- Chaque bloc = un échange complet -->
+      <div v-for="(block, i) in blocks" :key="i" class="block">
+
+        <!-- Question utilisateur -->
+        <div class="user-msg">
+          <span>{{ block.question }}</span>
+        </div>
+
+        <!-- Réponse système : KPIs + Charts + Rapports + Suggestions -->
+        <div class="assistant-block" v-if="block.ready || block.streaming">
+
+          <!-- KPIs inline -->
+          <div class="kpi-strip" v-if="block.summary">
+            <div class="kpi-item">
+              <span class="kpi-v" :class="toneClass(block.summary.avg_tone)">{{ block.summary.avg_tone > 0 ? '+' : '' }}{{ block.summary.avg_tone }}</span>
+              <span class="kpi-l">Ton</span>
+            </div>
+            <div class="kpi-sep"></div>
+            <div class="kpi-item">
+              <span class="kpi-v" :class="goldClass(block.summary.avg_goldstein)">{{ block.summary.avg_goldstein > 0 ? '+' : '' }}{{ block.summary.avg_goldstein }}</span>
+              <span class="kpi-l">Goldstein</span>
+            </div>
+            <div class="kpi-sep"></div>
+            <div class="kpi-item">
+              <span class="kpi-v" :class="tensionClass(block.summary.avg_tension)">{{ block.summary.avg_tension }}<small>/100</small></span>
+              <span class="kpi-l">Tension</span>
+            </div>
+            <div class="kpi-sep"></div>
+            <div class="kpi-item">
+              <span class="kpi-v neutral">{{ block.summary.total_events?.toLocaleString('fr') }}</span>
+              <span class="kpi-l">Événements</span>
+            </div>
+            <div class="anomaly-pill" v-if="block.summary.anomaly_months?.length">
+              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+              {{ block.summary.anomaly_months.length }} anomalie{{ block.summary.anomaly_months.length > 1 ? 's' : '' }}
+            </div>
+          </div>
+
+          <!-- Graphiques inline -->
+          <div class="charts-inline" v-if="block.chartsRendered">
+            <div class="chart-wrap">
+              <div class="chart-title">Tension mensuelle</div>
+              <div :id="'tension-' + i" class="chart-el"></div>
+            </div>
+            <div class="chart-wrap">
+              <div class="chart-title">Perception × Stabilité</div>
+              <div :id="'bubble-' + i" class="chart-el"></div>
+            </div>
+            <div class="chart-wrap chart-full">
+              <div class="chart-title">Signal médiatique</div>
+              <div :id="'signal-' + i" class="chart-el"></div>
+            </div>
+          </div>
+
+          <!-- Rapports en streaming -->
+          <div class="reports-row" v-if="block.r1 || block.streamR1 || block.r2 || block.streamR2">
+            <div class="report" v-if="block.r1 || block.streamR1">
+              <div class="report-label">
+                <span class="dot r1-dot"></span>Tendances &amp; Anomalies
+              </div>
+              <div class="report-text" v-html="md(block.r1 || block.streamR1)"></div>
+            </div>
+            <div class="report" v-if="block.r2 || block.streamR2">
+              <div class="report-label">
+                <span class="dot r2-dot"></span>Croisement sources
+              </div>
+              <div class="report-text" v-html="md(block.r2 || block.streamR2)"></div>
+              <div class="sources" v-if="block.urls?.length && block.r2">
+                <a v-for="u in block.urls" :key="u" :href="u" target="_blank">{{ shortUrl(u) }}</a>
+              </div>
+            </div>
+          </div>
+
+          <!-- Skeletons pendant chargement -->
+          <div class="loading-reports" v-if="!block.r1 && !block.streamR1 && block.loadingR">
+            <div class="sk-report"></div>
+            <div class="sk-report"></div>
+          </div>
+
+          <!-- Suggestions -->
+          <div class="suggestions" v-if="block.suggestions?.length && block.ready">
+            <button v-for="s in block.suggestions" :key="s" class="sugg" @click="askFollowup(s)">{{ s }}</button>
+          </div>
+
+        </div>
+
+        <!-- Réponse follow-up (texte seul) -->
+        <div class="followup-answer" v-if="block.answer || block.streamAnswer">
+          <div v-html="md(block.answer || block.streamAnswer)"></div>
+        </div>
+
+      </div>
+
+      <!-- Block en cours de chargement initial -->
+      <div class="block" v-if="loadingBlock">
+        <div class="user-msg"><span>{{ pendingQuestion }}</span></div>
+        <div class="assistant-block">
+          <div class="thinking">
+            <span></span><span></span><span></span>
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- Input bas de page -->
+    <div class="chat-input-bar">
+      <div class="input-row">
+        <textarea
+          v-model="followupMessage"
+          placeholder="Posez votre prochaine question…"
+          @keydown.enter.prevent="askFollowup(followupMessage)"
+          rows="1"
+          :disabled="isProcessing"
+        ></textarea>
+        <button class="btn-send" @click="askFollowup(followupMessage)"
+                :disabled="!followupMessage.trim() || isProcessing">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+        </button>
+      </div>
+    </div>
+
+  </div>
+  </transition>
+
+</div>
+<script type="module" src="app.js"></script>
+</body>
+</html>
