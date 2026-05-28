@@ -7,6 +7,7 @@ google-cloud-bigquery-storage>=2.25.0
 db-dtypes>=1.2.0  # requis par BigQuery pour la conversion en pandas DataFrame
 pandas>=2.2.0
 pyarrow>=15.0.0
+statsmodels>=0.14.0
 
 # --- Configuration & utilitaires ---
 python-dotenv>=1.0.0

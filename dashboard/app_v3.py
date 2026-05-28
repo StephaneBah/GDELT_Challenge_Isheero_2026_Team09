@@ -1189,12 +1189,12 @@ with tabs[4]:
 
     st.markdown(f'<div class="profile-tag" style="background:{pcol}">{pinfo["icon"]} Espace {selected_profile}</div>', unsafe_allow_html=True)
 
-    # Insight IA
+    # Insight IA (déjà présent)
     st.markdown("<div class='section-title'>🤖 Note d'analyse personnalisée</div>", unsafe_allow_html=True)
     insight = generate_insight(df_view, pkey, scores, risk_df)
     st.markdown(f'<div class="insight-box">{insight}</div>', unsafe_allow_html=True)
 
-    # Métriques clés selon profil
+    # Métriques clés selon profil (conserver votre code existant)
     st.markdown("<div class='section-title'>📌 Indicateurs clés</div>", unsafe_allow_html=True)
     if pkey == "investor":
         r1, r2, r3, r4 = st.columns(4)
@@ -1254,7 +1254,6 @@ with tabs[4]:
         with r4: metric_card("Tonalité", f"{avg_tone:.2f}", "Signal global", "#d18f2b")
 
         st.markdown("<div class='section-title'>📆 Timeline des événements clés</div>", unsafe_allow_html=True)
-        # Top événements par mois
         top_monthly = df_view.sort_values("AvgTone").groupby("month").head(1)[["event_date","event_root","AvgTone","actor1_country","SOURCEURL"]].sort_values("event_date")
         if not top_monthly.empty and "SOURCEURL" in top_monthly.columns:
             top_monthly["event_date"] = top_monthly["event_date"].dt.date
@@ -1279,14 +1278,117 @@ with tabs[4]:
                                title="Distribution GoldsteinScale", color_discrete_sequence=["#0d6b3f"], height=300)
             st.plotly_chart(fig, use_container_width=True)
 
-        st.markdown("<div class='section-title'>📈 Corrélation Tone ~ Goldstein</div>", unsafe_allow_html=True)
-        corr_df = df_view[["AvgTone","GoldsteinScale","NumMentions"]].dropna()
-        fig_corr = px.scatter(corr_df.sample(min(3000,len(corr_df))),
-                              x="AvgTone", y="GoldsteinScale", opacity=0.4,
-                              trendline="ols", color_discrete_sequence=[pcol], height=320,
-                              title=f"r = {corr_df['AvgTone'].corr(corr_df['GoldsteinScale']):.3f}")
-        st.plotly_chart(fig_corr, use_container_width=True)
+    st.markdown("<div class='section-title'>📈 Corrélation Tone ~ Goldstein</div>", unsafe_allow_html=True)
 
+    # 1. Nettoyage des données (NumMentions n'étant pas utilisé dans le scatter, on peut l'exclure ici)
+    corr_df = df_view[["AvgTone", "GoldsteinScale"]].dropna()
+
+    # 2. Sécurité : Il faut au moins 2 lignes ET de la variance (plus d'une valeur unique par colonne)
+    # Cela évite les crashs mathématiques de la trendline OLS de Plotly
+    if len(corr_df) >= 2 and corr_df["AvgTone"].nunique() > 1 and corr_df["GoldsteinScale"].nunique() > 1:
+        
+        sample_size = min(3000, len(corr_df))
+        df_sample = corr_df.sample(sample_size, random_state=42)
+        
+        # Calcul du r sur l'échantillon pour correspondre exactement à la courbe OLS affichée
+        r_value = df_sample["AvgTone"].corr(df_sample["GoldsteinScale"])
+        
+        fig_corr = px.scatter(
+            df_sample,
+            x="AvgTone", 
+            y="GoldsteinScale", 
+            opacity=0.4,
+            trendline="ols", 
+            color_discrete_sequence=[pcol], 
+            height=320,
+            title=f"Corrélation r = {r_value:.3f}"
+        )
+        st.plotly_chart(fig_corr, use_container_width=True)
+    else:
+        st.info("Données insuffisantes ou constantes. Impossible de calculer la corrélation et d'ajuster la courbe.")
+        
+
+    # ========== NOUVEAU : ACTIONS SUGGÉRÉES ==========
+    st.markdown("<div class='section-title'>🎯 Actions suggérées</div>", unsafe_allow_html=True)
+
+    # Calculs complémentaires pour les recommandations
+    attract_score = scores['total']
+    risk_global = risk_df["risk_score"].mean() if not risk_df.empty else 50
+    tone_avg = avg_tone
+    gold_avg = avg_gold
+    coop_share = df_view["is_cooperation"].mean()
+    econ_share = df_view["is_economic"].mean()
+    anomalies_count = len(detect_anomalies(df_view))
+
+    if pkey == "investor":
+        if attract_score > 70:
+            recommendation = "🔹 **Opportunité d'investissement** : L'attractivité est très forte. Envisagez des investissements dans les secteurs économiques les plus médiatisés."
+        elif attract_score > 40:
+            recommendation = "🔸 **Potentiel modéré** : Surveillez l'évolution de la tonalité. Climat des affaires en construction, privilégiez les partenariats à faible risque."
+        else:
+            recommendation = "⚠️ **Prudence** : La perception est dégradée. Attendez des signaux de stabilisation avant tout engagement lourd."
+        st.markdown(f'<div class="callout">{recommendation}</div>', unsafe_allow_html=True)
+        st.write("**Actions concrètes :**")
+        st.write("- Identifier les secteurs avec la meilleure tonalité (ex: coopération économique).")
+        st.write("- Analyser les anomalies pour détecter des pics d'actualité pouvant influencer le risque.")
+        st.write("- Utiliser le tableau des partenaires pour cibler les pays stables.")
+
+    elif pkey == "diplomat":
+        if tone_avg > 0 and gold_avg > 0:
+            recommendation = "🤝 **Climat favorable** : Renforcez les initiatives de coopération bilatérale. La couverture médiatique soutient l'image du Bénin."
+        else:
+            recommendation = "🌍 **Dialogue nécessaire** : Les indicateurs suggèrent des tensions. Proposez des programmes de coopération culturelle ou économique pour inverser la tendance."
+        st.markdown(f'<div class="callout">{recommendation}</div>', unsafe_allow_html=True)
+        st.write("**Actions concrètes :**")
+        st.write("- Cibler les pays partenaires affichant une tonalité positive (voir carte des partenaires).")
+        st.write("- Organiser des sommets bilatéraux avec les pays en zone de vigilance.")
+        st.write("- Amplifier la communication sur les réussites diplomatiques via les médias internationaux.")
+
+    elif pkey == "apiex":
+        if attract_score > 65:
+            recommendation = "📈 **Attractivité élevée** : Le Bénin bénéficie d'une couverture économique favorable. Capitalisez sur les secteurs porteurs."
+        elif attract_score > 35:
+            recommendation = "📊 **Potentiel à activer** : La perception économique est modérée. Lancez des campagnes ciblées pour promouvoir les niches d'excellence."
+        else:
+            recommendation = "⚠️ **Visibilité à renforcer** : La couverture économique est faible. Priorisez des actions de communication et des missions économiques."
+        st.markdown(f'<div class="callout">{recommendation}</div>', unsafe_allow_html=True)
+        st.write("**Actions concrètes :**")
+        st.write("- Identifier les thématiques économiques les plus médiatisées et les valoriser dans les pitchs IED.")
+        st.write("- Collaborer avec les sources internationales pour améliorer la tonalité.")
+        st.write("- Organiser des webinaires sectoriels en s'appuyant sur les données du dashboard.")
+
+    elif pkey == "journalist":
+        if anomalies_count > 0:
+            recommendation = "📰 **Actualité chaude** : Des anomalies statistiques détectées. Ces pics peuvent constituer des angles éditoriaux forts."
+        else:
+            recommendation = "📝 **Couverture stable** : Pas d'anomalie majeure. Explorez les thématiques dominantes pour des analyses de fond."
+        st.markdown(f'<div class="callout">{recommendation}</div>', unsafe_allow_html=True)
+        st.write("**Actions concrètes :**")
+        st.write("- Télécharger les données des anomalies pour enquêter sur les causes.")
+        st.write("- Utiliser le tableau des articles pour trouver des sources primaires.")
+        st.write("- Comparer les word clouds nationaux vs internationaux pour identifier les biais de traitement.")
+
+    else:  # researcher
+        recommendation = "🔬 **Analyse approfondie** : Les données GDELT offrent un potentiel de modélisation. Explorez les séries temporelles et le clustering."
+        st.markdown(f'<div class="callout">{recommendation}</div>', unsafe_allow_html=True)
+        st.write("**Actions concrètes :**")
+        st.write("- Exporter les scores de risque et d'attractivité pour des analyses longitudinales.")
+        st.write("- Utiliser le clustering des partenaires pour des études géopolitiques.")
+        st.write("- Corréler les indicateurs GDELT avec des données externes (IDE, indicateurs de gouvernance).")
+
+    # Tableau de bord personnalisé (métriques clés)
+    st.markdown("<div class='section-title'>📊 Tableau de bord personnalisé</div>", unsafe_allow_html=True)
+    col_met1, col_met2, col_met3 = st.columns(3)
+    with col_met1:
+        st.metric("Score attractivité", f"{scores['total']:.1f}/100", 
+                  delta=f"{scores['total'] - h1h2['H1']['total']:.1f}" if h1h2['H1']['total'] else None)
+    with col_met2:
+        st.metric("Niveau de risque", f"{risk_global:.1f}/100",
+                  delta="Élevé" if risk_global > 60 else ("Modéré" if risk_global > 30 else "Faible"))
+    with col_met3:
+        st.metric("Anomalies détectées", f"{anomalies_count}",
+                  delta="Pics/creux" if anomalies_count > 0 else "Stable")
+        
 # ══════════════════════════════════════════════════════════════════════════════
 # TAB 6 — EXPORTS & DONNÉES
 # ══════════════════════════════════════════════════════════════════════════════
