@@ -2,3 +2,7 @@ streamlit
 pandas
 plotly
 scipy
+statsmodels
+matplotlib
+wordcloud
+pyarrow
