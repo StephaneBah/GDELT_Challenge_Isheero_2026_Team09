@@ -1,5 +1,5 @@
 # ============================================================================
-# Observatoire médiatique du Bénin — v3 | 9.8/10 MVP Décideurs
+# Observatoire médiatique du Bénin — v3 | MVP Décideurs
 # Audiences : Investisseur · MAE · APIEx · Journaliste · Chercheur
 # Source     : GDELT Event Database 2025
 # ============================================================================
