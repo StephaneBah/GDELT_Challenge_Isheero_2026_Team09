@@ -1141,33 +1141,33 @@ with tabs[3]:
     st.plotly_chart(fig_scatter, use_container_width=True)
 
     # Anomalies
-st.markdown("<div class='section-title'>🔔 Alertes & Anomalies statistiques</div>", unsafe_allow_html=True)
-anomalies = detect_anomalies(df_view)
-if not anomalies.empty:
-    n_anom = len(anomalies)
-    st.markdown(f'<div class="warning-box">⚠️ <strong>{n_anom} anomalie(s)</strong> détectée(s) par la méthode IQR (hors-norme statistique).</div>', unsafe_allow_html=True)
-    for _, row in anomalies.head(20).iterrows():
-        metric_icons = {"volume":"📊","avg_tone":"😐","avg_gold":"⚖️"}
-        icon = metric_icons.get(row["métrique"],"📌")
-        st.markdown(f"""
-<div class="anomaly-card">
-  {icon} <strong>{row['date']}</strong> · <em>{row['métrique']}</em> · valeur <strong>{row['valeur']:.2f}</strong> {row['direction']}
-  <span style="color:#888;font-size:.82rem"> (norme : {row['seuil_inf']:.2f} → {row['seuil_sup']:.2f})</span>
-</div>""", unsafe_allow_html=True)
-        
-        # Téléchargement des données de l'anomalie
-        anomaly_data = get_anomaly_data(df_view, row['date'], row['métrique'])
-        if not anomaly_data.empty:
-            csv_data = anomaly_data.to_csv(index=False).encode('utf-8')
-            st.download_button(
-                label="📥 Télécharger les données de cette anomalie (CSV)",
-                data=csv_data,
-                file_name=f"anomalie_{row['date']}_{row['métrique']}.csv",
-                mime="text/csv",
-                key=f"download_anom_{row['date']}_{row['métrique']}_{row['direction']}"
-            )
-else:
-    st.markdown('<div class="callout">✅ Aucune anomalie statistique détectée sur la période sélectionnée.</div>', unsafe_allow_html=True)
+    st.markdown("<div class='section-title'>🔔 Alertes & Anomalies statistiques</div>", unsafe_allow_html=True)
+    anomalies = detect_anomalies(df_view)
+    if not anomalies.empty:
+        n_anom = len(anomalies)
+        st.markdown(f'<div class="warning-box">⚠️ <strong>{n_anom} anomalie(s)</strong> détectée(s) par la méthode IQR (hors-norme statistique).</div>', unsafe_allow_html=True)
+        for _, row in anomalies.head(20).iterrows():
+            metric_icons = {"volume":"📊","avg_tone":"😐","avg_gold":"⚖️"}
+            icon = metric_icons.get(row["métrique"],"📌")
+            st.markdown(f"""
+    <div class="anomaly-card">
+    {icon} <strong>{row['date']}</strong> · <em>{row['métrique']}</em> · valeur <strong>{row['valeur']:.2f}</strong> {row['direction']}
+    <span style="color:#888;font-size:.82rem"> (norme : {row['seuil_inf']:.2f} → {row['seuil_sup']:.2f})</span>
+    </div>""", unsafe_allow_html=True)
+            
+            # Téléchargement des données de l'anomalie
+            anomaly_data = get_anomaly_data(df_view, row['date'], row['métrique'])
+            if not anomaly_data.empty:
+                csv_data = anomaly_data.to_csv(index=False).encode('utf-8')
+                st.download_button(
+                    label="📥 Télécharger les données de cette anomalie (CSV)",
+                    data=csv_data,
+                    file_name=f"anomalie_{row['date']}_{row['métrique']}.csv",
+                    mime="text/csv",
+                    key=f"download_anom_{row['date']}_{row['métrique']}_{row['direction']}"
+                )
+    else:
+        st.markdown('<div class="callout">✅ Aucune anomalie statistique détectée sur la période sélectionnée.</div>', unsafe_allow_html=True)
 
     # Évolution H1/H2 par dimension
     st.markdown("<div class='section-title'>🔄 Dynamique H1→H2 par dimension</div>", unsafe_allow_html=True)
