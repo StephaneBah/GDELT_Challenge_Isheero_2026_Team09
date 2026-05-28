@@ -1,5 +1,6 @@
 import json
 import os
+import asyncio
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -7,13 +8,21 @@ load_dotenv(Path(__file__).parent.parent / ".env")
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse, FileResponse
+from fastapi.responses import StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from data_service import filter_data, summarize, get_top_urls, build_charts
-from ai_service import extract_intent, stream_report1, stream_report2, generate_suggestions, stream_followup
 from scraper import fetch_articles
+
+# Détection mode démo (pas de clé ou solde épuisé)
+API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
+DEMO_MODE = not API_KEY or API_KEY.startswith("sk-ant-REMPLACE")
+
+if not DEMO_MODE:
+    from ai_service import extract_intent, stream_report1, stream_report2, generate_suggestions, stream_followup
+else:
+    print("⚡ Mode démo activé — API Anthropic non disponible")
 
 app = FastAPI(title="Echo Média API")
 
@@ -36,23 +45,46 @@ class FollowupRequest(BaseModel):
     keywords: list[str] = []
     history: list[dict] = []
 
+# ── Helpers démo ─────────────────────────────────────────────────────────────
+
+def _sse(text: str) -> str:
+    return f"data: {json.dumps({'text': text})}\n\n"
+
+async def _stream_text(text: str, chunk_size: int = 6):
+    """Simule un streaming token par token pour la démo."""
+    words = text.split(" ")
+    buf = ""
+    for i, word in enumerate(words):
+        buf += word + " "
+        if len(buf) >= chunk_size or i == len(words) - 1:
+            yield _sse(buf)
+            buf = ""
+            await asyncio.sleep(0.02)
+    yield "data: [DONE]\n\n"
+
 # ── Endpoints ────────────────────────────────────────────────────────────────
 
 @app.get("/health")
 def health():
-    return {"status": "ok"}
+    return {"status": "ok", "demo_mode": DEMO_MODE}
 
 
 @app.post("/analyze")
 async def analyze(req: AnalyzeRequest):
-    """
-    Pipeline complet :
-    1. Extrait l'intention (Haiku)
-    2. Filtre les données pandas
-    3. Construit les graphiques Plotly
-    4. Retourne le résumé + les charts + les URLs top
-    Le streaming des rapports est fait via /report1 et /report2.
-    """
+    if DEMO_MODE:
+        from demo_data import DEMO_SUMMARY, DEMO_INTENT
+        # Génère quand même de vrais charts depuis les données
+        try:
+            df = filter_data(req.sector, [])
+            summary = summarize(df)
+            charts = build_charts(df, summary.get("anomaly_months", []))
+            urls = get_top_urls(df, n=3)
+        except Exception:
+            summary = DEMO_SUMMARY
+            charts = {}
+            urls = []
+        return {"intent": DEMO_INTENT, "summary": summary, "charts": charts, "top_urls": urls}
+
     intent_data = await extract_intent(req.message, req.sector)
     keywords = intent_data.get("keywords", [])
     sector   = intent_data.get("data_focus", req.sector)
@@ -65,28 +97,25 @@ async def analyze(req: AnalyzeRequest):
     charts  = build_charts(df, summary.get("anomaly_months", []))
     urls    = get_top_urls(df, n=3)
 
-    return {
-        "intent":   intent_data,
-        "summary":  summary,
-        "charts":   charts,
-        "top_urls": urls,
-    }
+    return {"intent": intent_data, "summary": summary, "charts": charts, "top_urls": urls}
 
 
 @app.post("/report1")
 async def report1(req: AnalyzeRequest):
-    """Stream le Rapport 1 (tendances + anomalies)."""
+    if DEMO_MODE:
+        from demo_data import DEMO_REPORT1
+        return StreamingResponse(_stream_text(DEMO_REPORT1), media_type="text/event-stream")
+
     intent_data = await extract_intent(req.message, req.sector)
     keywords = intent_data.get("keywords", [])
     sector   = intent_data.get("data_focus", req.sector)
-
-    df      = filter_data(sector, keywords)
-    summary = summarize(df)
-    intent  = intent_data.get("intent_fr", req.message)
+    df       = filter_data(sector, keywords)
+    summary  = summarize(df)
+    intent   = intent_data.get("intent_fr", req.message)
 
     async def gen():
         async for chunk in stream_report1(summary, intent, sector):
-            yield f"data: {json.dumps({'text': chunk})}\n\n"
+            yield _sse(chunk)
         yield "data: [DONE]\n\n"
 
     return StreamingResponse(gen(), media_type="text/event-stream")
@@ -94,20 +123,22 @@ async def report1(req: AnalyzeRequest):
 
 @app.post("/report2")
 async def report2(req: AnalyzeRequest):
-    """Stream le Rapport 2 (enrichissement par articles sources)."""
+    if DEMO_MODE:
+        from demo_data import DEMO_REPORT2
+        return StreamingResponse(_stream_text(DEMO_REPORT2), media_type="text/event-stream")
+
     intent_data = await extract_intent(req.message, req.sector)
     keywords = intent_data.get("keywords", [])
     sector   = intent_data.get("data_focus", req.sector)
-
-    df      = filter_data(sector, keywords)
-    summary = summarize(df)
-    intent  = intent_data.get("intent_fr", req.message)
-    urls    = get_top_urls(df, n=3)
+    df       = filter_data(sector, keywords)
+    summary  = summarize(df)
+    intent   = intent_data.get("intent_fr", req.message)
+    urls     = get_top_urls(df, n=3)
     articles = await fetch_articles(urls)
 
     async def gen():
         async for chunk in stream_report2(summary, articles, intent):
-            yield f"data: {json.dumps({'text': chunk})}\n\n"
+            yield _sse(chunk)
         yield "data: [DONE]\n\n"
 
     return StreamingResponse(gen(), media_type="text/event-stream")
@@ -115,28 +146,32 @@ async def report2(req: AnalyzeRequest):
 
 @app.post("/suggestions")
 async def suggestions(req: AnalyzeRequest):
-    """Retourne 3 suggestions de questions de suivi."""
+    if DEMO_MODE:
+        from demo_data import DEMO_SUGGESTIONS
+        return {"suggestions": DEMO_SUGGESTIONS}
+
     intent_data = await extract_intent(req.message, req.sector)
     keywords = intent_data.get("keywords", [])
     sector   = intent_data.get("data_focus", req.sector)
-
-    df      = filter_data(sector, keywords)
-    summary = summarize(df)
-    intent  = intent_data.get("intent_fr", req.message)
-    suggs   = await generate_suggestions(summary, intent, [])
-
+    df       = filter_data(sector, keywords)
+    summary  = summarize(df)
+    intent   = intent_data.get("intent_fr", req.message)
+    suggs    = await generate_suggestions(summary, intent, [])
     return {"suggestions": suggs}
 
 
 @app.post("/followup")
 async def followup(req: FollowupRequest):
-    """Stream une réponse à une question de suivi."""
+    if DEMO_MODE:
+        from demo_data import DEMO_FOLLOWUP
+        return StreamingResponse(_stream_text(DEMO_FOLLOWUP), media_type="text/event-stream")
+
     df      = filter_data(req.sector, req.keywords)
     summary = summarize(df)
 
     async def gen():
         async for chunk in stream_followup(req.question, summary, req.history):
-            yield f"data: {json.dumps({'text': chunk})}\n\n"
+            yield _sse(chunk)
         yield "data: [DONE]\n\n"
 
     return StreamingResponse(gen(), media_type="text/event-stream")
