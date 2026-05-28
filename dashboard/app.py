@@ -870,7 +870,7 @@ if date_range:
 
 st.markdown(f"""
 <div class="hero">
-  <div class="hero-eyebrow">🇧🇯 Observatoire médiatique · GDELT 2025</div>
+  <div class="hero-eyebrow">🇧🇯 Benin Echo-Media || Observatoire médiatique · GDELT 2025</div>
   <div class="hero-title">Attractivité territoriale du Bénin<br><span style="font-size:1.5rem;color:#1e6f78">Pilotée par les données médiatiques</span></div>
   <div class="hero-subtitle">
     {len(df_view):,} événements analysés{date_label} · Profil actif : {pinfo["icon"]} <strong>{selected_profile}</strong>
