@@ -6,3 +6,4 @@ statsmodels
 matplotlib
 wordcloud
 pyarrow
+scikit-learn
