@@ -114,31 +114,63 @@
             </div>
           </div>
 
-          <!-- Charts — divs Plotly toujours dans le DOM dès que summary est prêt.
-               La classe chart-skeleton donne l'aspect loading ; elle disparaît
-               quand chartsRendered passe à true après que Plotly a dessiné. -->
+          <!-- Charts dynamiques — seuls les charts retournés par l'IA sont affichés -->
           <div class="charts-inline" v-if="block.summary">
-            <div class="chart-wrap" :class="{ 'chart-skeleton': !block.chartsRendered }">
+
+            <div class="chart-wrap" :class="{ 'chart-skeleton': !block.chartsRendered }"
+                 v-if="block.charts?.tension !== undefined">
               <div class="chart-title">
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
                 Tension mensuelle
               </div>
               <div :id="'tension-' + i" class="chart-el"></div>
             </div>
-            <div class="chart-wrap" :class="{ 'chart-skeleton': !block.chartsRendered }">
+
+            <div class="chart-wrap" :class="{ 'chart-skeleton': !block.chartsRendered }"
+                 v-if="block.charts?.bubble !== undefined">
               <div class="chart-title">
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="7.5" cy="7.5" r="1.5"/><circle cx="18.5" cy="5.5" r="1.5"/><circle cx="11.5" cy="11.5" r="1.5"/><circle cx="7.5" cy="16.5" r="1.5"/><circle cx="17.5" cy="14.5" r="1.5"/><path d="M3 3v18h18"/></svg>
                 Perception × Stabilité
               </div>
               <div :id="'bubble-' + i" class="chart-el"></div>
             </div>
-            <div class="chart-wrap chart-full" :class="{ 'chart-skeleton': !block.chartsRendered }">
+
+            <div class="chart-wrap chart-full" :class="{ 'chart-skeleton': !block.chartsRendered }"
+                 v-if="block.charts?.signal !== undefined">
               <div class="chart-title">
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>
                 Signal médiatique — Volume, Ton &amp; Stabilité
               </div>
               <div :id="'signal-' + i" class="chart-el"></div>
             </div>
+
+            <div class="chart-wrap chart-full" :class="{ 'chart-skeleton': !block.chartsRendered }"
+                 v-if="block.charts?.partners !== undefined">
+              <div class="chart-title">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+                Principaux pays partenaires
+              </div>
+              <div :id="'partners-' + i" class="chart-el chart-el--tall"></div>
+            </div>
+
+            <div class="chart-wrap chart-full" :class="{ 'chart-skeleton': !block.chartsRendered }"
+                 v-if="block.charts?.themes !== undefined">
+              <div class="chart-title">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
+                Thèmes dominants
+              </div>
+              <div :id="'themes-' + i" class="chart-el chart-el--tall"></div>
+            </div>
+
+            <div class="chart-wrap chart-full" :class="{ 'chart-skeleton': !block.chartsRendered }"
+                 v-if="block.charts?.actors !== undefined">
+              <div class="chart-title">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+                Types d'acteurs impliqués
+              </div>
+              <div :id="'actors-' + i" class="chart-el chart-el--tall"></div>
+            </div>
+
           </div>
 
           <!-- Rapports -->

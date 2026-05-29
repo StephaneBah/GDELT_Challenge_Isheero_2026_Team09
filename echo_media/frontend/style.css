@@ -347,6 +347,7 @@ body {
   padding: .55rem .8rem .1rem;
 }
 .chart-el { width: 100%; height: 200px; }
+.chart-el--tall { height: 320px; }
 
 /* Skeleton : appliqué au .chart-el quand le parent .chart-wrap a la classe chart-skeleton */
 .chart-skeleton .chart-el {

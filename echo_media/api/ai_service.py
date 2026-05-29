@@ -39,16 +39,33 @@ JSON uniquement (pas de markdown) :
   "intent_fr": "Résumé en une phrase",
   "data_focus": "economie|diplomatie|cooperation|conflits|gouvernance|libre",
   "date_from": "YYYYMMDD ou null",
-  "date_to":   "YYYYMMDD ou null"{needs_viz_field}
+  "date_to":   "YYYYMMDD ou null",
+  "charts": ["chart1", "chart2"]{needs_viz_field}
 }}
 
 Règles pour data_focus — sois précis, évite "libre" sauf si la question est vraiment générale :
 - "economie" : commerce, sanctions, aide économique, investissement, budget, financement, croissance
 - "diplomatie" : visites officielles, négociations, accords, relations bilatérales, ambassades
 - "cooperation" : aide fournie, partenariats, accords de développement, organisations internationales
-- "conflits" : risque, sécurité, menaces, instabilité, violence, tensions, crises, combats, protestations, indicateurs de risque
+- "conflits" : risque, sécurité, menaces, instabilité, violence, tensions, crises, combats, protestations
 - "gouvernance" : élections, institutions, politique intérieure, réformes, administration
 - "libre" : uniquement si la question couvre plusieurs secteurs sans dominante claire
+
+Règles pour charts — choisis 2 à 4 parmi cette liste selon ce que la question demande vraiment :
+- "tension"   : évolution temporelle de la tension, anomalies, "quand", "temps forts", "pics"
+- "signal"    : corrélation volume/ton/stabilité dans le temps, tendances globales
+- "bubble"    : comparer des catégories d'événements entre elles, "quels types d'événements"
+- "partners"  : pays impliqués, "qui", "partenaires", "acteurs étrangers", "avec qui"
+- "themes"    : thèmes dominants en volume, "quels sujets", "quelles catégories"
+- "actors"    : types d'acteurs (gouvernement, ONG, militaire…), "qui agit"
+
+Exemples :
+- "meilleurs partenaires" → ["partners", "bubble"]
+- "temps forts de l'économie" → ["tension", "signal", "themes"]
+- "indicateurs de risque" → ["tension", "bubble", "themes"]
+- "évolution de la diplomatie" → ["signal", "tension", "partners"]
+- "quels types d'événements dominent" → ["bubble", "themes"]
+- "vue d'ensemble" → ["tension", "signal", "bubble", "partners"]
 
 date_from/date_to : si l'utilisateur mentionne une période (ex: "mars à juillet 2025" → 20250301 / 20250731). Null sinon.{needs_viz_instruction}"""
 
@@ -73,7 +90,9 @@ async def stream_report1(chart_description: str, summary: dict, intent: str, sec
     Raisonne à partir de ce que montrent les charts, pas des stats brutes.
     """
     c = get_client()
-    prompt = f"""L'utilisateur explore : **{intent}** ({sector})
+    sector_focus = f"IMPORTANT : l'analyse porte UNIQUEMENT sur le secteur **{sector.upper()}** — ne déborde pas sur d'autres domaines." if sector != "libre" else ""
+    prompt = f"""L'utilisateur explore : **{intent}** — secteur : **{sector}**
+{sector_focus}
 
 Voici ce que montrent les visualisations générées :
 
@@ -83,9 +102,9 @@ Contexte chiffré :
 - {summary.get('total_events')} événements · Ton {summary.get('avg_tone'):+.2f} · Goldstein {summary.get('avg_goldstein'):+.2f}
 - Anomalies sur : {summary.get('anomaly_months') or 'aucune'}
 
-Rédige un mini-rapport en **2 paragraphes courts** (6 phrases max au total) :
-- §1 : Ce que les visuels révèlent sur la dynamique médiatique
-- §2 : L'anomalie ou le signal le plus fort — et ce qu'il signifie concrètement
+Rédige un mini-rapport en **2 paragraphes courts** (6 phrases max au total), centré sur le secteur {sector} :
+- §1 : Ce que les visuels révèlent sur la dynamique médiatique dans ce secteur
+- §2 : L'anomalie ou le signal le plus fort — et ce qu'il signifie concrètement pour ce secteur
 
 Sois direct. Pas de titre, pas de liste. Parle comme un analyste qui brief un décideur en 30 secondes."""
 
@@ -101,48 +120,83 @@ Sois direct. Pas de titre, pas de liste. Parle comme un analyste qui brief un d�
 
 # ── Report 2 — croisement sources ────────────────────────────────────────────
 
+async def _web_search_context(intent: str, anomaly_months: list, sector: str) -> str:
+    """Haiku + web_search — récupère du contexte web sur les anomalies détectées."""
+    c = get_client()
+    months_str = ", ".join(anomaly_months[:3]) if anomaly_months else ""
+    query = f"Bénin {sector} {intent} {months_str}".strip()
+
+    try:
+        resp = await c.messages.create(
+            model="claude-haiku-4-5-20251001",
+            max_tokens=800,
+            tools=[{"type": "web_search_20250305", "name": "web_search", "max_uses": 4}],
+            messages=[{
+                "role": "user",
+                "content": (
+                    f"Recherche des actualités récentes sur : « {query} ».\n"
+                    "Résume en 3-4 points factuels (événements, acteurs, dates) ce que tu trouves. "
+                    "Focalise sur ce qui pourrait expliquer des pics ou creux dans la couverture médiatique."
+                )
+            }]
+        )
+        parts = []
+        for block in resp.content:
+            if hasattr(block, "text") and block.text:
+                parts.append(block.text)
+        return "\n".join(parts) if parts else ""
+    except Exception as e:
+        print(f"[web_search] indisponible: {e}")
+        return ""
+
+
 async def stream_report2(summary: dict, articles: list[dict], intent: str,
-                         chart_description: str, anomaly_detail: str = ""):
-    """Sonnet — 2 paragraphes, croisement articles + explication causale des anomalies."""
+                         chart_description: str, anomaly_detail: str = "",
+                         anomaly_articles: list[dict] | None = None,
+                         sector: str = "libre"):
+    """Sonnet — 3 paragraphes, croisement GDELT + articles scrapés + web search."""
     c = get_client()
 
-    accessible = [
-        a for a in articles
-        if a.get("excerpt") and not a["excerpt"].startswith("[Inaccessible")
-    ]
-    inaccessible_count = len(articles) - len(accessible)
+    def fmt_articles(arts: list[dict], label: str) -> str:
+        accessible = [a for a in arts if a.get("excerpt") and not a["excerpt"].startswith("[Inaccessible")]
+        inacc = len(arts) - len(accessible)
+        note = f" ({inacc} inaccessibles)" if inacc else ""
+        if not accessible:
+            return f"{label}{note} : aucun article accessible."
+        return f"{label}{note} :\n" + "\n\n".join(
+            f"[{a['title']}]\n{a.get('url','')}\n{a['excerpt']}"
+            for a in accessible
+        )
 
-    articles_text = "\n\n".join(
-        f"[{a['title']}]\nSource : {a.get('url','?')}\n{a['excerpt']}"
-        for a in accessible
-    ) or "Aucun article accessible."
+    general_block = fmt_articles(articles, "Articles GDELT — couverture générale")
+    anomaly_block_articles = fmt_articles(anomaly_articles or [], "Articles GDELT — période anomalique") if anomaly_articles else ""
+    anomaly_context = f"\nDétail anomalie GDELT :\n{anomaly_detail}" if anomaly_detail else ""
 
-    scraping_note = (
-        f"\n⚠ {inaccessible_count} article(s) inaccessibles sur {len(articles)} tentés."
-        if inaccessible_count > 0 else ""
-    )
-
-    anomaly_block = f"\nDétail période anomalique :\n{anomaly_detail}" if anomaly_detail else ""
+    # Web search pour enrichir le contexte causal
+    anomaly_months = summary.get("anomaly_months", [])
+    web_context = await _web_search_context(intent, anomaly_months, sector)
+    web_block = f"\nRecherche web (contexte complémentaire) :\n{web_context}" if web_context else ""
 
     prompt = f"""L'utilisateur explore : **{intent}**
 
-Signal GDELT global :
+Signal GDELT :
 {chart_description}
-{anomaly_block}
+{anomaly_context}
 
-Articles sources (ciblés sur la période anomalique si applicable) :{scraping_note}
-{articles_text}
+{general_block}
 
-Rédige 3 paragraphes courts (8 phrases max au total) :
-- §1 : Ce que les articles révèlent sur le POURQUOI des anomalies — événement précis, acteur déclencheur, contexte. Si les articles n'expliquent pas l'anomalie, dis-le franchement.
-- §2 : Angle éditorial — qui couvre, depuis où, quels biais. Signale si la couverture est insuffisante pour conclure.
-- §3 : Implication concrète pour un décideur + 1 signal à surveiller dans les semaines suivantes. Formule comme un brief de 30 secondes.
+{anomaly_block_articles}
+{web_block}
 
-Précis, chiffré, sans titre. Si les données ne permettent pas de conclure sur le pourquoi, dis-le explicitement."""
+Rédige un mini‑reportage analytique en **2 paragraphes maximum** (3‑4 phrases chacun).
+- §1 : Raconte l'événement ou la dynamique clé avec un ton humain et factuel. Croise GDELT + articles + web. Si aucune source ne permet d'expliquer, dis‑le clairement.
+- §2 : Donne l'angle éditorial et l'implication concrète (qui couvre, quel biais, ce que ça change) + 1 signal à surveiller.
+
+Style : fluide, précis, pas de liste, pas de titre, pas de jargon gratuit."""
 
     async with c.messages.stream(
         model="claude-sonnet-4-6",
-        max_tokens=420,
+        max_tokens=500,
         system=SYSTEM_CONTEXT,
         messages=[{"role": "user", "content": prompt}]
     ) as s:

@@ -49,7 +49,8 @@ async function sse(url, body, onChunk, onDone) {
 createApp({
   setup() {
     const phase          = ref('landing')
-    const selectedSector = ref('libre')
+    const selectedSector = ref('libre')   // secteur choisi sur le landing
+    // NOTE: currentSector = selectedSector — on utilise selectedSector partout pour éviter la désync
     const firstMessage   = ref('')
     const followupMessage= ref('')
     const isProcessing   = ref(false)
@@ -68,7 +69,7 @@ createApp({
 
     // Chaque élément = un échange complet (question + réponse système ou follow-up)
     const blocks = ref([])
-    const currentSector = ref('libre')
+    const currentSector = selectedSector   // alias — même ref, zéro désync
     const currentSummary = ref(null)  // summary du dernier bloc principal
 
     const sectors = [
@@ -89,7 +90,7 @@ createApp({
         icon: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>`,
       },
       {
-        id: 'libre', label: 'Exploration', desc: 'Tous secteurs',
+        id: 'libre', label: 'Libre', desc: 'Tous secteurs',
         icon: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>`,
       },
     ]
@@ -125,12 +126,20 @@ createApp({
       console.log(`[renderCharts] bubble présent:`,  !!chartsData?.bubble)
       console.log(`[renderCharts] signal présent:`,  !!chartsData?.signal)
 
+      // Premier chart disponible parmi ceux réellement construits
+      const firstChartId = ['tension','bubble','signal','partners','themes','actors']
+        .find(id => chartsData[id])
+      if (!firstChartId) {
+        console.warn('[renderCharts] aucun chart dans chartsData, abandon')
+        return
+      }
+
       function tryRender(attempt = 0) {
-        const el = document.getElementById(`tension-${blockIdx}`)
+        const el = document.getElementById(`${firstChartId}-${blockIdx}`)
         const w = el ? el.getBoundingClientRect().width : -1
 
         if (attempt % 5 === 0) {
-          console.log(`[tryRender] attempt=${attempt} el=${!!el} width=${w}`)
+          console.log(`[tryRender] attempt=${attempt} el=${!!el} width=${w} (cherche ${firstChartId}-${blockIdx})`)
         }
 
         if (!el || w === 0) {
@@ -145,21 +154,12 @@ createApp({
         console.log(`[tryRender] DOM prêt à attempt=${attempt}, width=${w}px — lancement Plotly`)
 
         try {
-          if (chartsData.tension) {
-            const s = JSON.parse(chartsData.tension)
-            console.log(`[Plotly] tension data traces:`, s.data?.length, 'layout:', !!s.layout)
-            Plotly.newPlot(`tension-${blockIdx}`, s.data, s.layout, cfg)
-            console.log(`[Plotly] tension OK`)
-          }
-          if (chartsData.bubble) {
-            const s = JSON.parse(chartsData.bubble)
-            Plotly.newPlot(`bubble-${blockIdx}`, s.data, s.layout, cfg)
-            console.log(`[Plotly] bubble OK`)
-          }
-          if (chartsData.signal) {
-            const s = JSON.parse(chartsData.signal)
-            Plotly.newPlot(`signal-${blockIdx}`, s.data, s.layout, cfg)
-            console.log(`[Plotly] signal OK`)
+          for (const id of ['tension','bubble','signal','partners','themes','actors']) {
+            if (chartsData[id]) {
+              const s = JSON.parse(chartsData[id])
+              Plotly.newPlot(`${id}-${blockIdx}`, s.data, s.layout, cfg)
+              console.log(`[Plotly] ${id} OK`)
+            }
           }
           block.chartsRendered = true
           console.log(`[renderCharts] chartsRendered = true`)
@@ -179,8 +179,7 @@ createApp({
       if (!canStart.value || isProcessing.value) return
 
       phase.value = 'chat'
-      // Si appelée depuis un follow-up, currentSector a déjà été mis à jour — ne pas écraser
-      if (!fromFollowup) currentSector.value = selectedSector.value
+      // currentSector === selectedSector (même ref) — pas besoin de copie
       isProcessing.value = true
 
       const question = firstMessage.value.trim() ||
@@ -226,28 +225,32 @@ createApp({
         })
 
         currentStep.value = 2   // construction visuels
-        block.summary = data.summary
-        block.chartDescription = data.chart_description || ''
-        block.anomalyDetail = data.anomaly_detail || ''
-        block.urls = data.top_urls || []
         currentSummary.value = data.summary
-        block.chartsRendered = false  // skeletons d'abord
 
-        // Fait apparaître KPIs + skeletons, cache le loading
+        // Toutes les propriétés définies AVANT le push — Vue les rend réactives dès le départ
+        block.summary          = data.summary
+        block.charts           = data.charts || {}
+        block.chartDescription = data.chart_description || ''
+        block.anomalyDetail    = data.anomaly_detail || ''
+        block.urls             = data.top_urls || []
+        block.anomalyUrls      = data.anomaly_urls || []
+        block.chartsRendered   = false
+        block.streaming        = true   // ← avant push, sinon Vue ne voit pas le changement
+
         blocks.value.push(block)
         loadingBlock.value = false
-        block.streaming = true
 
         await nextTick()
-        renderCharts(blockIdx, data.charts, block)  // -> chartsRendered=true quand Plotly prêt
+        renderCharts(blockIdx, data.charts, block)
         await scrollDown()
 
       } catch (e) {
-        loadingBlock.value = false
-        blocks.value.push(block)
         block.r1 = `Erreur : ${e.message}`
         block.loadingR = false
         block.ready = true
+        block.streaming = false
+        loadingBlock.value = false
+        blocks.value.push(block)
         isProcessing.value = false
         return
       }
@@ -255,6 +258,7 @@ createApp({
       // 2. Rapports en parallèle — on passe les données déjà calculées
       const intentObj     = analyzeData.intent || {}
       const intentStr     = intentObj.intent_fr || question
+      const intentKw      = intentObj.keywords || []
       const chartDesc     = analyzeData.chart_description || ''
       const summaryData   = analyzeData.summary || {}
       const topUrls       = analyzeData.top_urls || []
@@ -269,8 +273,9 @@ createApp({
       const r2Body = {
         message: question, sector: currentSector.value,
         chart_description: chartDesc, summary: summaryData,
-        intent: intentStr, top_urls: topUrls,
+        intent: intentStr, keywords: intentKw, top_urls: topUrls,
         anomaly_detail: block.anomalyDetail || '',
+        anomaly_urls: block.anomalyUrls || [],
       }
 
       currentStep.value = 3   // rapport 1
@@ -411,6 +416,7 @@ createApp({
       followupMessage.value = ''
       isProcessing.value = false
       loadingBlock.value = false
+      selectedSector.value = 'libre'   // remet le secteur à zéro → état landing propre
     }
 
     return {

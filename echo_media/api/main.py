@@ -6,13 +6,22 @@ from pathlib import Path
 from dotenv import load_dotenv
 load_dotenv(Path(__file__).parent.parent / ".env")
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from data_service import filter_data, summarize, get_top_urls, get_anomaly_urls, describe_anomaly_period, build_charts, infer_sector_from_text
+from data_service import (
+    filter_data,
+    summarize,
+    get_top_urls,
+    get_anomaly_urls,
+    describe_anomaly_period,
+    build_charts,
+    infer_sector_from_text,
+    rank_urls,
+)
 from scraper import fetch_articles
 from chart_describe import describe_charts
 import cache as _cache
@@ -54,7 +63,9 @@ class Report2Request(BaseModel):
     chart_description: str = ""
     summary: dict = {}
     intent: str = ""
+    keywords: list[str] = []
     top_urls: list[str] = []
+    anomaly_urls: list[str] = []
     anomaly_detail: str = ""
 
 class SuggestionsRequest(BaseModel):
@@ -77,6 +88,14 @@ class FollowupRequest(BaseModel):
 
 def _sse(text: str) -> str:
     return f"data: {json.dumps({'text': text})}\n\n"
+
+
+def _summary_empty(summary: dict | None) -> bool:
+    if not summary:
+        return True
+    if summary.get("error"):
+        return True
+    return summary.get("total_events", 0) == 0
 
 async def _stream_text(text: str, chunk_size: int = 6):
     """Simule un streaming token par token pour la démo."""
@@ -164,13 +183,35 @@ async def analyze(req: AnalyzeRequest):
 
     df = filter_data(sector, keywords, date_from=date_from, date_to=date_to)
     if df.empty:
-        raise HTTPException(status_code=404, detail="Aucune donnée pour ces filtres.")
+        result = {
+            "intent": intent_data,
+            "summary": {"total_events": 0, "error": "Aucune donnée pour ces filtres"},
+            "charts": {},
+            "chart_description": "",
+            "top_urls": [],
+            "anomaly_urls": [],
+            "anomaly_detail": "",
+            "empty": True,
+        }
+        _cache.set(req.message, req.sector, result)
+        return result
 
     summary           = summarize(df)
     anomaly_months    = summary.get("anomaly_months", [])
-    charts            = build_charts(df, anomaly_months)
+    requested_charts  = intent_data.get("charts") or None
+    print(f"[analyze] charts demandés par Haiku: {requested_charts}")
+    charts            = build_charts(df, anomaly_months, requested=requested_charts)
     chart_description = describe_charts(charts, summary)
-    urls              = get_anomaly_urls(df, anomaly_months, n=10)
+    urls_general      = rank_urls(df, keywords=keywords, sector_hint=sector, n=8) or get_top_urls(df, n=8)
+    urls_anomaly      = get_anomaly_urls(df, anomaly_months, n=5, keywords=keywords, sector=sector)
+    # Fusion dédupliquée — anomalie en priorité
+    seen = set()
+    urls = []
+    for u in urls_anomaly + urls_general:
+        if u not in seen:
+            seen.add(u)
+            urls.append(u)
+    urls = urls[:12]
     anomaly_detail    = describe_anomaly_period(df, anomaly_months)
 
     result = {
@@ -179,6 +220,7 @@ async def analyze(req: AnalyzeRequest):
         "charts": charts,
         "chart_description": chart_description,
         "top_urls": urls,
+        "anomaly_urls": urls_anomaly,
         "anomaly_detail": anomaly_detail,
     }
     _cache.set(req.message, req.sector, result)
@@ -211,6 +253,12 @@ async def report1(req: Report1Request):
         chart_description = describe_charts(charts, summary)
         intent            = intent_data.get("intent_fr", req.message)
 
+    if _summary_empty(summary):
+        return StreamingResponse(
+            _stream_text("Aucune donnée disponible pour ces filtres."),
+            media_type="text/event-stream",
+        )
+
     async def gen():
         async for chunk in stream_report1(chart_description, summary, intent, sector):
             yield _sse(chunk)
@@ -228,7 +276,9 @@ async def report2(req: Report2Request):
     chart_description = req.chart_description
     summary           = req.summary
     intent            = req.intent or req.message
+    keywords          = req.keywords or []
     top_urls          = req.top_urls
+    anomaly_urls      = req.anomaly_urls
     anomaly_detail    = req.anomaly_detail
 
     if not chart_description or not summary:
@@ -243,13 +293,27 @@ async def report2(req: Report2Request):
         charts            = build_charts(df, anomaly_months)
         chart_description = describe_charts(charts, summary)
         intent            = intent_data.get("intent_fr", req.message)
-        top_urls          = get_anomaly_urls(df, anomaly_months, n=10)
+        top_urls          = rank_urls(df, keywords=keywords, sector_hint=sector, n=8) or get_top_urls(df, n=8)
+        anomaly_urls      = get_anomaly_urls(df, anomaly_months, n=5, keywords=keywords, sector=sector)
         anomaly_detail    = describe_anomaly_period(df, anomaly_months)
 
-    articles = await fetch_articles(top_urls)
+    if _summary_empty(summary):
+        return StreamingResponse(
+            _stream_text("Aucune donnée disponible pour ces filtres."),
+            media_type="text/event-stream",
+        )
+
+    # Scraping parallèle : articles généraux + articles anomalies
+    async def _empty(): return []
+    articles, anomaly_articles = await asyncio.gather(
+        fetch_articles(top_urls),
+        fetch_articles(anomaly_urls) if anomaly_urls else _empty(),
+    )
 
     async def gen():
-        async for chunk in stream_report2(summary, articles, intent, chart_description, anomaly_detail):
+        async for chunk in stream_report2(summary, articles, intent, chart_description,
+                                          anomaly_detail, anomaly_articles,
+                                          sector=req.sector):
             yield _sse(chunk)
         yield "data: [DONE]\n\n"
 
