@@ -16,6 +16,10 @@ Notre analyse explore la position du Bénin sur l'échiquier international à tr
 - **Dashboard Streamlit** : exploration analytique avancée (filtres, anomalies, sources, clustering).
 - **Notebooks & scripts** : collecte, nettoyage, et analyses exploratoires.
 
+## Livrables
+- Demo link: https://drive.google.com/file/d/15t9ayIKadZmqR6I4_VvV2sIxEVRc619K/view?usp=sharing
+- Pitch Deck: https://drive.google.com/file/d/1Z-6uP7hYMIpHzTGERJevY9K5-TGThcTR/view
+
 ## Démarrage rapide (Echo Media)
 ```powershell
 cd echo_media
