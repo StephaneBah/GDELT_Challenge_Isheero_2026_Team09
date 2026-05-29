@@ -57,6 +57,15 @@ createApp({
     const pendingQuestion= ref('')
     const streamEl       = ref(null)
 
+    const pipelineSteps = [
+      'Analyse de l\'intention',
+      'Filtrage des données GDELT',
+      'Construction des visualisations',
+      'Rédaction Rapport 1 — Tendances',
+      'Rapport 2 — Croisement sources',
+    ]
+    const currentStep = ref(0)
+
     // Chaque élément = un échange complet (question + réponse système ou follow-up)
     const blocks = ref([])
     const currentSector = ref('libre')
@@ -106,45 +115,79 @@ createApp({
       if (streamEl.value) streamEl.value.scrollTop = streamEl.value.scrollHeight
     }
 
-    function renderCharts(blockIdx, chartsData) {
+    function renderCharts(blockIdx, chartsData, block) {
       const cfg = { responsive: true, displayModeBar: false }
 
-      // Attend que les divs soient dans le DOM avec des dimensions réelles
+      console.log(`[renderCharts] blockIdx=${blockIdx}`)
+      console.log(`[renderCharts] Plotly disponible:`, typeof Plotly !== 'undefined')
+      console.log(`[renderCharts] chartsData keys:`, Object.keys(chartsData || {}))
+      console.log(`[renderCharts] tension présent:`, !!chartsData?.tension)
+      console.log(`[renderCharts] bubble présent:`,  !!chartsData?.bubble)
+      console.log(`[renderCharts] signal présent:`,  !!chartsData?.signal)
+
       function tryRender(attempt = 0) {
         const el = document.getElementById(`tension-${blockIdx}`)
-        if (!el || el.offsetWidth === 0) {
-          if (attempt < 20) setTimeout(() => tryRender(attempt + 1), 80)
+        const w = el ? el.getBoundingClientRect().width : -1
+
+        if (attempt % 5 === 0) {
+          console.log(`[tryRender] attempt=${attempt} el=${!!el} width=${w}`)
+        }
+
+        if (!el || w === 0) {
+          if (attempt < 40) {
+            requestAnimationFrame(() => tryRender(attempt + 1))
+          } else {
+            console.error(`[tryRender] ABANDON après 40 tentatives. el=${!!el} width=${w}`)
+          }
           return
         }
-        if (chartsData.tension) {
-          const s = JSON.parse(chartsData.tension)
-          Plotly.newPlot(`tension-${blockIdx}`, s.data, s.layout, cfg)
-        }
-        if (chartsData.bubble) {
-          const s = JSON.parse(chartsData.bubble)
-          Plotly.newPlot(`bubble-${blockIdx}`, s.data, s.layout, cfg)
-        }
-        if (chartsData.signal) {
-          const s = JSON.parse(chartsData.signal)
-          Plotly.newPlot(`signal-${blockIdx}`, s.data, s.layout, cfg)
+
+        console.log(`[tryRender] DOM prêt à attempt=${attempt}, width=${w}px — lancement Plotly`)
+
+        try {
+          if (chartsData.tension) {
+            const s = JSON.parse(chartsData.tension)
+            console.log(`[Plotly] tension data traces:`, s.data?.length, 'layout:', !!s.layout)
+            Plotly.newPlot(`tension-${blockIdx}`, s.data, s.layout, cfg)
+            console.log(`[Plotly] tension OK`)
+          }
+          if (chartsData.bubble) {
+            const s = JSON.parse(chartsData.bubble)
+            Plotly.newPlot(`bubble-${blockIdx}`, s.data, s.layout, cfg)
+            console.log(`[Plotly] bubble OK`)
+          }
+          if (chartsData.signal) {
+            const s = JSON.parse(chartsData.signal)
+            Plotly.newPlot(`signal-${blockIdx}`, s.data, s.layout, cfg)
+            console.log(`[Plotly] signal OK`)
+          }
+          block.chartsRendered = true
+          console.log(`[renderCharts] chartsRendered = true`)
+        } catch(e) {
+          console.error('[Plotly] ERREUR de rendu:', e)
         }
       }
 
-      nextTick(() => tryRender())
+      nextTick(() => {
+        console.log(`[renderCharts] nextTick fired, lancement RAF`)
+        requestAnimationFrame(() => tryRender())
+      })
     }
 
     // ── Pipeline principal ────────────────────────────────────────────────────
-    async function startAnalysis() {
+    async function startAnalysis(fromFollowup = false) {
       if (!canStart.value || isProcessing.value) return
 
       phase.value = 'chat'
-      currentSector.value = selectedSector.value
+      // Si appelée depuis un follow-up, currentSector a déjà été mis à jour — ne pas écraser
+      if (!fromFollowup) currentSector.value = selectedSector.value
       isProcessing.value = true
 
       const question = firstMessage.value.trim() ||
         `Analyse la couverture médiatique — ${currentSectorLabel.value}`
       firstMessage.value = ''
 
+      currentStep.value = 0
       loadingBlock.value = true
       pendingQuestion.value = question
       await scrollDown()
@@ -156,13 +199,15 @@ createApp({
         urls: [], suggestions: [], ready: false, streaming: false,
         answer: '', streamAnswer: '',
       }
-      blocks.value.push(block)
-      loadingBlock.value = false
-      block.streaming = true
+
+      // Étape 0 → 1 : intent en cours, données en cours
+      currentStep.value = 0
       await scrollDown()
 
-      // 1. Analyze
+      // 1. Analyze (intent + filtrage + charts)
+      let analyzeData = null
       try {
+        currentStep.value = 1   // filtrage données
         const res = await fetch(API + '/analyze', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -170,17 +215,36 @@ createApp({
         })
         if (!res.ok) throw new Error(await res.text())
         const data = await res.json()
+        analyzeData = data
+        console.log('[/analyze] réponse reçue:', {
+          hasCharts: !!data.charts,
+          chartKeys: Object.keys(data.charts || {}),
+          tensionLen: data.charts?.tension?.length,
+          hasSummary: !!data.summary,
+          totalEvents: data.summary?.total_events,
+          chartDescription: data.chart_description?.slice(0, 80),
+        })
 
+        currentStep.value = 2   // construction visuels
         block.summary = data.summary
+        block.chartDescription = data.chart_description || ''
+        block.anomalyDetail = data.anomaly_detail || ''
         block.urls = data.top_urls || []
         currentSummary.value = data.summary
-        block.chartsRendered = true
+        block.chartsRendered = false  // skeletons d'abord
+
+        // Fait apparaître KPIs + skeletons, cache le loading
+        blocks.value.push(block)
+        loadingBlock.value = false
+        block.streaming = true
 
         await nextTick()
-        renderCharts(blockIdx, data.charts)
+        renderCharts(blockIdx, data.charts, block)  // -> chartsRendered=true quand Plotly prêt
         await scrollDown()
 
       } catch (e) {
+        loadingBlock.value = false
+        blocks.value.push(block)
         block.r1 = `Erreur : ${e.message}`
         block.loadingR = false
         block.ready = true
@@ -188,26 +252,58 @@ createApp({
         return
       }
 
-      // 2. Rapports en parallèle
-      const p1 = sse('/report1', { message: question, sector: currentSector.value },
+      // 2. Rapports en parallèle — on passe les données déjà calculées
+      const intentObj     = analyzeData.intent || {}
+      const intentStr     = intentObj.intent_fr || question
+      const chartDesc     = analyzeData.chart_description || ''
+      const summaryData   = analyzeData.summary || {}
+      const topUrls       = analyzeData.top_urls || []
+      const topThemes     = Object.keys(summaryData.top_themes || {})
+      const topActors     = Object.keys(summaryData.top_actors || {})
+
+      const r1Body = {
+        message: question, sector: currentSector.value,
+        chart_description: chartDesc, summary: summaryData,
+        intent: intentStr,
+      }
+      const r2Body = {
+        message: question, sector: currentSector.value,
+        chart_description: chartDesc, summary: summaryData,
+        intent: intentStr, top_urls: topUrls,
+        anomaly_detail: block.anomalyDetail || '',
+      }
+
+      currentStep.value = 3   // rapport 1
+      let r1Done = false
+      const p1 = sse('/report1', r1Body,
         chunk => { block.streamR1 += chunk; scrollDown() },
-        () => { block.r1 = block.streamR1; block.streamR1 = '' }
+        () => {
+          block.r1 = block.streamR1; block.streamR1 = ''
+          r1Done = true; currentStep.value = 4
+        }
       )
-      const p2 = sse('/report2', { message: question, sector: currentSector.value },
+      currentStep.value = 4   // rapport 2 / sources
+      const p2 = sse('/report2', r2Body,
         chunk => { block.streamR2 += chunk; scrollDown() },
         () => { block.r2 = block.streamR2; block.streamR2 = ''; block.loadingR = false }
       )
       await Promise.all([p1, p2])
 
-      // 3. Suggestions
+      // 3. Suggestions — ancrées dans le rapport 1
       try {
         const res = await fetch(API + '/suggestions', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ message: question, sector: currentSector.value }),
+          body: JSON.stringify({
+            message: question, sector: currentSector.value,
+            report1_text: block.r1,
+            intent: intentStr,
+            top_themes: topThemes,
+            top_actors: topActors,
+          }),
         })
-        const data = await res.json()
-        block.suggestions = data.suggestions || []
+        const data2 = await res.json()
+        block.suggestions = data2.suggestions || []
       } catch {}
 
       block.ready = true
@@ -216,7 +312,7 @@ createApp({
       await scrollDown()
     }
 
-    // ── Follow-up ─────────────────────────────────────────────────────────────
+    // ── Follow-up — routage intelligent ──────────────────────────────────────
     async function askFollowup(question) {
       question = question?.trim()
       if (!question || isProcessing.value) return
@@ -225,15 +321,39 @@ createApp({
       isProcessing.value = true
       loadingBlock.value = true
       pendingQuestion.value = question
-
-      // Historique des 6 derniers échanges
-      const history = blocks.value.slice(-3).flatMap(b => [
-        { role: 'user', content: b.question },
-        { role: 'assistant', content: (b.r1 || '').slice(0, 300) },
-      ])
-
       await scrollDown()
 
+      // 1. Routing : est-ce une nouvelle analyse ou une question interprétative ?
+      let needsViz = false
+      let routeIntent = null
+      try {
+        const rr = await fetch(API + '/route', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ question, sector: currentSector.value }),
+        })
+        const rd = await rr.json()
+        needsViz   = rd.needs_viz || false
+        routeIntent = rd.intent   || null
+        console.log(`[route] needs_viz=${needsViz}`, routeIntent?.intent_fr)
+      } catch (e) {
+        console.warn('[route] échec routing, fallback conversationnel', e)
+      }
+
+      // 2a. Nouvelle analyse → pipeline complet (charts + rapports)
+      if (needsViz) {
+        loadingBlock.value = false
+        // On met à jour le secteur si l'intent pointe vers un autre secteur
+        if (routeIntent?.data_focus && routeIntent.data_focus !== 'libre') {
+          currentSector.value = routeIntent.data_focus
+        }
+        // Réutilise startAnalysis avec la question comme firstMessage
+        firstMessage.value = question
+        await startAnalysis(true)
+        return
+      }
+
+      // 2b. Question interprétative → réponse conversationnelle
       const blockIdx = blocks.value.length
       const block = {
         question, summary: null, chartsRendered: false, loadingR: false,
@@ -245,23 +365,36 @@ createApp({
       loadingBlock.value = false
       await scrollDown()
 
+      const lastMain   = [...blocks.value].reverse().find(b => b.summary)
+      const fuSummary  = lastMain?.summary || currentSummary.value || {}
+      const fuChartDesc = lastMain?.chartDescription || ''
+
+      const history = blocks.value.slice(-4).flatMap(b => [
+        b.question ? { role: 'user',      content: b.question } : null,
+        (b.r1 || b.answer) ? { role: 'assistant', content: (b.r1 || b.answer).slice(0, 300) } : null,
+      ]).filter(Boolean)
+
       await sse('/followup',
-        { question, sector: currentSector.value, history },
+        { question, sector: currentSector.value, history, chart_description: fuChartDesc, summary: fuSummary },
         async chunk => { block.streamAnswer += chunk; await scrollDown() },
         async () => {
           block.answer = block.streamAnswer
           block.streamAnswer = ''
           block.streaming = false
 
-          // Suggestions après follow-up
           try {
             const res = await fetch(API + '/suggestions', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ message: question, sector: currentSector.value }),
+              body: JSON.stringify({
+                message: question, sector: currentSector.value,
+                report1_text: block.answer, intent: question,
+                top_themes: Object.keys(fuSummary.top_themes || {}),
+                top_actors: Object.keys(fuSummary.top_actors || {}),
+              }),
             })
-            const data = await res.json()
-            block.suggestions = data.suggestions || []
+            const d = await res.json()
+            block.suggestions = d.suggestions || []
           } catch {}
 
           block.ready = true
@@ -284,6 +417,7 @@ createApp({
       phase, selectedSector, firstMessage, followupMessage, canStart,
       sectors, blocks, currentSector, currentSectorLabel,
       isProcessing, loadingBlock, pendingQuestion, streamEl,
+      pipelineSteps, currentStep,
       toneClass, goldClass, tensionClass, shortUrl,
       startAnalysis, askFollowup, reset, md,
     }

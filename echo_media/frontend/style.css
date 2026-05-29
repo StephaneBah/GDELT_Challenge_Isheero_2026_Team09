@@ -348,6 +348,18 @@ body {
 }
 .chart-el { width: 100%; height: 200px; }
 
+/* Skeleton : appliqué au .chart-el quand le parent .chart-wrap a la classe chart-skeleton */
+.chart-skeleton .chart-el {
+  border-radius: 6px;
+  background: linear-gradient(90deg, var(--s2) 25%, var(--s3) 50%, var(--s2) 75%);
+  background-size: 200% 100%;
+  animation: sweep 1.4s ease-in-out infinite;
+}
+@keyframes sweep {
+  0%   { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
 /* Reports */
 .reports-row {
   display: grid;
@@ -461,6 +473,59 @@ body {
 .followup-answer strong { color: var(--text); }
 .followup-answer p { margin-bottom: .35rem; }
 .followup-answer ul { padding-left: 1.1rem; }
+
+/* ── Pipeline steps ───────────────────────────────────────────────────────── */
+.pipeline-steps {
+  display: flex;
+  flex-direction: column;
+  gap: .55rem;
+  background: var(--s1);
+  border: 1px solid var(--border);
+  border-radius: var(--r);
+  padding: 1rem 1.2rem;
+  width: fit-content;
+  min-width: 260px;
+}
+
+.pipeline-step {
+  display: flex;
+  align-items: center;
+  gap: .65rem;
+  font-size: .82rem;
+  transition: opacity .2s;
+}
+
+.pipeline-step.waiting { opacity: .3; }
+.pipeline-step.done    { opacity: .5; }
+.pipeline-step.active  { opacity: 1; }
+
+.step-indicator {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+}
+
+.pipeline-step.done   .step-indicator svg { color: var(--green); }
+.pipeline-step.active .step-indicator svg { color: var(--accent); }
+.pipeline-step.waiting .step-indicator svg { color: var(--muted); }
+
+.step-label { color: var(--text); }
+.pipeline-step.done   .step-label { color: var(--muted); text-decoration: line-through; }
+.pipeline-step.active .step-label { color: var(--text); font-weight: 500; }
+
+.step-spinner {
+  display: block;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  border: 2px solid rgba(26,157,166,.25);
+  border-top-color: var(--accent);
+  animation: spin .7s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
 
 /* Thinking dots */
 .thinking {

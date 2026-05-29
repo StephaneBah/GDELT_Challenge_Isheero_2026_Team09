@@ -114,27 +114,26 @@
             </div>
           </div>
 
-          <!-- Charts -->
-          <div class="charts-inline" v-if="block.chartsRendered">
-            <div class="chart-wrap">
+          <!-- Charts — divs Plotly toujours dans le DOM dès que summary est prêt.
+               La classe chart-skeleton donne l'aspect loading ; elle disparaît
+               quand chartsRendered passe à true après que Plotly a dessiné. -->
+          <div class="charts-inline" v-if="block.summary">
+            <div class="chart-wrap" :class="{ 'chart-skeleton': !block.chartsRendered }">
               <div class="chart-title">
-                <!-- bar-chart-2 -->
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
                 Tension mensuelle
               </div>
               <div :id="'tension-' + i" class="chart-el"></div>
             </div>
-            <div class="chart-wrap">
+            <div class="chart-wrap" :class="{ 'chart-skeleton': !block.chartsRendered }">
               <div class="chart-title">
-                <!-- scatter-chart -->
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="7.5" cy="7.5" r="1.5"/><circle cx="18.5" cy="5.5" r="1.5"/><circle cx="11.5" cy="11.5" r="1.5"/><circle cx="7.5" cy="16.5" r="1.5"/><circle cx="17.5" cy="14.5" r="1.5"/><path d="M3 3v18h18"/></svg>
                 Perception × Stabilité
               </div>
               <div :id="'bubble-' + i" class="chart-el"></div>
             </div>
-            <div class="chart-wrap chart-full">
+            <div class="chart-wrap chart-full" :class="{ 'chart-skeleton': !block.chartsRendered }">
               <div class="chart-title">
-                <!-- trending-up -->
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>
                 Signal médiatique — Volume, Ton &amp; Stabilité
               </div>
@@ -201,11 +200,24 @@
 
       </div>
 
-      <!-- Bloc en cours -->
+      <!-- Bloc en cours de chargement -->
       <div class="block" v-if="loadingBlock">
         <div class="user-msg"><span>{{ pendingQuestion }}</span></div>
         <div class="assistant-block">
-          <div class="thinking"><span></span><span></span><span></span></div>
+          <div class="pipeline-steps">
+            <div
+              v-for="(step, i) in pipelineSteps" :key="i"
+              class="pipeline-step"
+              :class="{ done: i < currentStep, active: i === currentStep, waiting: i > currentStep }"
+            >
+              <span class="step-indicator">
+                <svg v-if="i < currentStep" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+                <span v-else-if="i === currentStep" class="step-spinner"></span>
+                <svg v-else width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8" opacity=".3"/></svg>
+              </span>
+              <span class="step-label">{{ step }}</span>
+            </div>
+          </div>
         </div>
       </div>
     </div>

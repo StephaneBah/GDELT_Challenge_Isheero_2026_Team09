@@ -107,24 +107,79 @@ SECTOR_FILTERS = {
     "libre":       lambda df: df,
 }
 
+# Mots-clés → secteur : fallback Python si Haiku retourne "libre"
+_KW_SECTOR: list[tuple[set[str], str]] = [
+    ({"risque", "risques", "sécurité", "menace", "menaces", "instabilité", "violence",
+      "conflit", "conflits", "combat", "combats", "crise", "crises", "tension",
+      "tensions", "agression", "protestation", "manifestation"}, "conflits"),
+    ({"partenaire", "partenaires", "allié", "alliés", "ambassadeur", "négociation",
+      "négociations", "bilatéral", "bilatéraux", "visite", "visites", "accord",
+      "accords", "traité", "traités", "relation", "relations", "diplomatique"}, "diplomatie"),
+    ({"aide", "financement", "développement", "coopération", "partenariat",
+      "organisation", "international", "multilatéral", "don", "subvention",
+      "onu", "cedeao", "ua", "banque mondiale", "fmi"}, "cooperation"),
+    ({"économie", "économique", "commerce", "commercial", "investissement",
+      "budget", "fiscal", "croissance", "pib", "exportation", "importation",
+      "sanction", "sanctions", "dette", "financement"}, "economie"),
+    ({"élection", "élections", "gouvernement", "institution", "réforme",
+      "politique", "parlement", "constitution", "administration",
+      "président", "ministre"}, "gouvernance"),
+]
 
-def filter_data(sector: str, keywords: list[str]) -> pd.DataFrame:
+def infer_sector_from_text(message: str) -> str | None:
+    """Détecte un secteur à partir des mots du message — fallback si Haiku dit 'libre'."""
+    words = set(message.lower().split())
+    scores: dict[str, int] = {}
+    for kw_set, sector in _KW_SECTOR:
+        hit = len(words & kw_set)
+        if hit:
+            scores[sector] = scores.get(sector, 0) + hit
+    if scores:
+        return max(scores, key=lambda s: scores[s])
+    return None
+
+
+def filter_data(
+    sector: str,
+    keywords: list[str],
+    date_from: str | None = None,
+    date_to: str | None = None,
+) -> pd.DataFrame:
     df = get_df()
     sector_key = sector.lower().strip()
 
     if sector_key in SECTOR_FILTERS:
         df = SECTOR_FILTERS[sector_key](df)
 
+    # Filtre temporel (YYYYMMDD strings venant de l'intent)
+    if date_from:
+        try:
+            df = df[df["event_date"] >= pd.to_datetime(date_from, format="%Y%m%d", errors="coerce")]
+        except Exception:
+            pass
+    if date_to:
+        try:
+            df = df[df["event_date"] <= pd.to_datetime(date_to, format="%Y%m%d", errors="coerce")]
+        except Exception:
+            pass
+
     if keywords:
         kw_lower = [k.lower() for k in keywords]
-        mask = pd.Series(False, index=df.index)
-        for kw in kw_lower:
-            mask |= df["event_root_label"].str.lower().str.contains(kw, na=False)
-            mask |= df["actor1_country"].str.lower().str.contains(kw, na=False)
-            mask |= df["actor2_country"].str.lower().str.contains(kw, na=False)
-            mask |= df["actor1_type"].str.lower().str.contains(kw, na=False)
-        if mask.any():
-            df = df[mask]
+        # Mots abstraits qui ne matchent pas des noms de pays/codes — on les ignore
+        ABSTRACT = {"risque", "risques", "sécurité", "instabilité", "crise", "crises",
+                    "indicateur", "indicateurs", "analyse", "tendance", "tendances",
+                    "performance", "bilan", "résultat", "impact", "signal", "signaux"}
+        concrete_kw = [k for k in kw_lower if k not in ABSTRACT]
+        if concrete_kw:
+            mask = pd.Series(False, index=df.index)
+            for kw in concrete_kw:
+                mask |= df["event_root_label"].str.lower().str.contains(kw, na=False)
+                mask |= df["actor1_country"].str.lower().str.contains(kw, na=False)
+                mask |= df["actor2_country"].str.lower().str.contains(kw, na=False)
+                mask |= df["actor1_type"].str.lower().str.contains(kw, na=False)
+            if mask.any():
+                df = df[mask]
+        # Si tous les keywords sont abstraits → le filtre sectoriel suffit, pas de réduction
 
     return df.copy()
 
@@ -176,7 +231,7 @@ def summarize(df: pd.DataFrame) -> dict:
     }
 
 
-def get_top_urls(df: pd.DataFrame, n: int = 3) -> list[str]:
+def get_top_urls(df: pd.DataFrame, n: int = 10) -> list[str]:
     if "SOURCEURL" not in df.columns:
         return []
     return (
@@ -186,6 +241,70 @@ def get_top_urls(df: pd.DataFrame, n: int = 3) -> list[str]:
         .head(n)
         .tolist()
     )
+
+
+def get_anomaly_urls(df: pd.DataFrame, anomaly_months: list[str], n: int = 10) -> list[str]:
+    """URLs ciblées sur les mois anomaliques — pour expliquer les pics/creux."""
+    if not anomaly_months:
+        return get_top_urls(df, n)
+    mask = df["month"].astype(str).apply(
+        lambda m: any(m[:7] in a[:7] for a in anomaly_months)
+    )
+    sub = df[mask]
+    if sub.empty:
+        return get_top_urls(df, n)
+    return get_top_urls(sub, n)
+
+
+def describe_anomaly_period(df: pd.DataFrame, anomaly_months: list[str]) -> str:
+    """
+    Détail structuré des événements pendant les mois anomaliques.
+    Donne au LLM les éléments concrets pour expliquer le pourquoi.
+    """
+    if not anomaly_months:
+        return ""
+    mask = df["month"].astype(str).apply(
+        lambda m: any(m[:7] in a[:7] for a in anomaly_months)
+    )
+    sub = df[mask]
+    if sub.empty:
+        return ""
+
+    lines = [f"DÉTAIL PÉRIODE ANOMALIQUE ({', '.join(anomaly_months)}) — {len(sub)} événements\n"]
+
+    # Types d'événements dominants
+    top_codes = sub["event_root_label"].value_counts().head(6).to_dict()
+    lines.append("Types d'événements : " + ", ".join(f'"{k}" ({v})' for k, v in top_codes.items()))
+
+    # Acteurs principaux (hors Bénin)
+    foreign = sub[~sub["actor1_country"].str.lower().isin(["bénin", "benin", "inconnu", ""])]
+    top_actors = foreign["actor1_country"].value_counts().head(5).to_dict()
+    if top_actors:
+        lines.append("Acteurs étrangers impliqués : " + ", ".join(f"{k} ({v})" for k, v in top_actors.items()))
+
+    # Stats période vs reste
+    rest = df[~mask]
+    tone_anom  = sub["AvgTone"].mean()
+    tone_rest  = rest["AvgTone"].mean() if not rest.empty else 0
+    gold_anom  = sub["GoldsteinScale"].mean()
+    gold_rest  = rest["GoldsteinScale"].mean() if not rest.empty else 0
+
+    lines.append(
+        f"Ton période : {tone_anom:+.2f} vs reste de l'année : {tone_rest:+.2f} "
+        f"(écart {tone_anom - tone_rest:+.2f})"
+    )
+    lines.append(
+        f"Goldstein période : {gold_anom:+.2f} vs reste : {gold_rest:+.2f}"
+    )
+
+    # Codes CAMEO les plus conflictuels présents
+    conflict_present = sub[sub["root_int"].isin(CONFLICT_ROOTS)]["event_root_label"].value_counts().head(3)
+    if not conflict_present.empty:
+        lines.append("Signaux conflictuels détectés : " + ", ".join(
+            f'"{k}" ({v})' for k, v in conflict_present.items()
+        ))
+
+    return "\n".join(lines)
 
 
 def build_charts(df: pd.DataFrame, anomaly_months: list[str]) -> dict:
