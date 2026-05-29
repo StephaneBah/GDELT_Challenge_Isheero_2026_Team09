@@ -414,10 +414,70 @@ def describe_anomaly_period(df: pd.DataFrame, anomaly_months: list[str]) -> str:
 
 
 DEFAULT_CHARTS = ["tension", "signal", "bubble", "partners"]
+ALLOWED_CHARTS = {"tension", "signal", "bubble", "partners", "themes", "actors"}
+SECTOR_CHART_DEFAULTS = {
+    "economie":    ["signal", "tension", "themes"],
+    "diplomatie":  ["partners", "signal", "bubble"],
+    "cooperation": ["partners", "bubble", "signal"],
+    "conflits":    ["tension", "signal", "bubble"],
+    "gouvernance": ["tension", "themes", "signal"],
+    "libre":       DEFAULT_CHARTS,
+}
+
+
+def select_charts(
+    df: pd.DataFrame,
+    sector: str,
+    requested: list[str] | None = None,
+    min_charts: int = 3,
+) -> list[str]:
+    """Sélectionne des charts adaptés au secteur et aux données filtrées."""
+    if df.empty:
+        return []
+
+    req = [c for c in (requested or []) if c in ALLOWED_CHARTS]
+    defaults = SECTOR_CHART_DEFAULTS.get(sector.lower(), DEFAULT_CHARTS)
+    order = req if req else list(defaults)
+
+    month_count = df["month"].nunique() if "month" in df.columns else 0
+    if "event_date" in df.columns and df["event_date"].notna().any():
+        span_days = (df["event_date"].max() - df["event_date"].min()).days
+    else:
+        span_days = 0
+
+    available = set()
+    if month_count >= 1:
+        available.add("tension")
+    if month_count >= 2 and span_days >= 30:
+        available.add("signal")
+
+    if "event_root_label" in df.columns and df["event_root_label"].nunique() >= 2:
+        available.update({"bubble", "themes"})
+
+    if "actor1_country" in df.columns:
+        partners = df[~df["actor1_country"].str.lower().isin(["bénin", "benin", "inconnu", ""])]
+        if not partners.empty:
+            available.add("partners")
+
+    if "actor1_type" in df.columns:
+        actors = df[df["actor1_type"].str.lower().ne("inconnu")]
+        if not actors.empty:
+            available.add("actors")
+
+    selected = [c for c in order if c in available]
+    if len(selected) < min_charts:
+        fallback = list(defaults) + ["themes", "actors", "partners", "bubble", "tension", "signal"]
+        for c in fallback:
+            if c in available and c not in selected:
+                selected.append(c)
+            if len(selected) >= min_charts:
+                break
+
+    return selected
 
 def build_charts(df: pd.DataFrame, anomaly_months: list[str],
                  requested: list[str] | None = None) -> dict:
-    """Construit uniquement les charts demandés. Par défaut : tension+signal+bubble+partners."""
+    """Construit uniquement les charts demandés (liste validée)."""
     to_build = set(requested) if requested else set(DEFAULT_CHARTS)
     import plotly.graph_objects as go
 

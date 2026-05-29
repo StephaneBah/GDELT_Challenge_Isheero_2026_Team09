@@ -361,7 +361,7 @@ createApp({
       // 2b. Question interprétative → réponse conversationnelle
       const blockIdx = blocks.value.length
       const block = {
-        question, summary: null, chartsRendered: false, loadingR: false,
+        question, summary: null, chartsRendered: false, loadingR: true,
         r1: '', r2: '', streamR1: '', streamR2: '',
         urls: [], suggestions: [], ready: false, streaming: true,
         answer: '', streamAnswer: '',
@@ -370,14 +370,34 @@ createApp({
       loadingBlock.value = false
       await scrollDown()
 
-      const lastMain   = [...blocks.value].reverse().find(b => b.summary)
-      const fuSummary  = lastMain?.summary || currentSummary.value || {}
+      const lastMain    = [...blocks.value].reverse().find(b => b.summary)
+      const fuSummary   = lastMain?.summary || currentSummary.value || {}
       const fuChartDesc = lastMain?.chartDescription || ''
+      const fuUrls      = lastMain?.urls || []
+      const fuAnomUrls  = lastMain?.anomalyUrls || []
+      const fuAnomDetail= lastMain?.anomalyDetail || ''
+      const fuIntent    = routeIntent?.intent_fr || question
+      const fuKeywords  = routeIntent?.keywords || []
 
       const history = blocks.value.slice(-4).flatMap(b => [
         b.question ? { role: 'user',      content: b.question } : null,
         (b.r1 || b.answer) ? { role: 'assistant', content: (b.r1 || b.answer).slice(0, 300) } : null,
       ]).filter(Boolean)
+
+      const r2Body = {
+        message: question, sector: currentSector.value,
+        chart_description: fuChartDesc, summary: fuSummary,
+        intent: fuIntent, keywords: fuKeywords,
+        top_urls: fuUrls, anomaly_urls: fuAnomUrls,
+        anomaly_detail: fuAnomDetail,
+      }
+
+      const r2Promise = (fuUrls.length || fuAnomUrls.length)
+        ? sse('/report2', r2Body,
+            chunk => { block.streamR2 += chunk; scrollDown() },
+            () => { block.r2 = block.streamR2; block.streamR2 = ''; block.loadingR = false }
+          )
+        : Promise.resolve().then(() => { block.r2 = 'Aucune source disponible pour ce suivi.'; block.loadingR = false })
 
       await sse('/followup',
         { question, sector: currentSector.value, history, chart_description: fuChartDesc, summary: fuSummary },
@@ -407,6 +427,8 @@ createApp({
           await scrollDown()
         }
       )
+
+      await r2Promise
     }
 
     function reset() {

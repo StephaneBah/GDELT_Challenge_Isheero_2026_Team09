@@ -110,7 +110,7 @@ Sois direct. Pas de titre, pas de liste. Parle comme un analyste qui brief un d�
 
     async with c.messages.stream(
         model="claude-sonnet-4-6",
-        max_tokens=300,
+        max_tokens=450,
         system=SYSTEM_CONTEXT,
         messages=[{"role": "user", "content": prompt}]
     ) as s:
@@ -192,11 +192,11 @@ Rédige un mini‑reportage analytique en **2 paragraphes maximum** (3‑4 phras
 - §1 : Raconte l'événement ou la dynamique clé avec un ton humain et factuel. Croise GDELT + articles + web. Si aucune source ne permet d'expliquer, dis‑le clairement.
 - §2 : Donne l'angle éditorial et l'implication concrète (qui couvre, quel biais, ce que ça change) + 1 signal à surveiller.
 
-Style : fluide, précis, pas de liste, pas de titre, pas de jargon gratuit."""
+Style : fluide, précis, pas de liste, pas de titre, pas de jargon gratuit. Termine chaque paragraphe par une phrase complète (pas d'ellipse)."""
 
     async with c.messages.stream(
         model="claude-sonnet-4-6",
-        max_tokens=500,
+        max_tokens=800,
         system=SYSTEM_CONTEXT,
         messages=[{"role": "user", "content": prompt}]
     ) as s:

@@ -21,6 +21,7 @@ from data_service import (
     build_charts,
     infer_sector_from_text,
     rank_urls,
+    select_charts,
 )
 from scraper import fetch_articles
 from chart_describe import describe_charts
@@ -199,8 +200,9 @@ async def analyze(req: AnalyzeRequest):
     summary           = summarize(df)
     anomaly_months    = summary.get("anomaly_months", [])
     requested_charts  = intent_data.get("charts") or None
-    print(f"[analyze] charts demandés par Haiku: {requested_charts}")
-    charts            = build_charts(df, anomaly_months, requested=requested_charts)
+    selected_charts   = select_charts(df, sector, requested=requested_charts)
+    print(f"[analyze] charts demandés: {requested_charts} → sélection: {selected_charts}")
+    charts            = build_charts(df, anomaly_months, requested=selected_charts)
     chart_description = describe_charts(charts, summary)
     urls_general      = rank_urls(df, keywords=keywords, sector_hint=sector, n=8) or get_top_urls(df, n=8)
     urls_anomaly      = get_anomaly_urls(df, anomaly_months, n=5, keywords=keywords, sector=sector)
@@ -249,7 +251,8 @@ async def report1(req: Report1Request):
         date_to           = intent_data.get("date_to")
         df                = filter_data(sector, keywords, date_from=date_from, date_to=date_to)
         summary           = summarize(df)
-        charts            = build_charts(df, summary.get("anomaly_months", []))
+        selected_charts   = select_charts(df, sector, requested=intent_data.get("charts"))
+        charts            = build_charts(df, summary.get("anomaly_months", []), requested=selected_charts)
         chart_description = describe_charts(charts, summary)
         intent            = intent_data.get("intent_fr", req.message)
 
@@ -290,7 +293,8 @@ async def report2(req: Report2Request):
         df                = filter_data(sector, keywords, date_from=date_from, date_to=date_to)
         summary           = summarize(df)
         anomaly_months    = summary.get("anomaly_months", [])
-        charts            = build_charts(df, anomaly_months)
+        selected_charts   = select_charts(df, sector, requested=intent_data.get("charts"))
+        charts            = build_charts(df, anomaly_months, requested=selected_charts)
         chart_description = describe_charts(charts, summary)
         intent            = intent_data.get("intent_fr", req.message)
         top_urls          = rank_urls(df, keywords=keywords, sector_hint=sector, n=8) or get_top_urls(df, n=8)
