@@ -1,4 +1,4 @@
-# Hackathon iSHEERO X Datacamp 2026 — Bénin Insights Challenge
+# Hackathon iSHEERO X Datacamp 2026 : Bénin Insights Challenge
 
 ## Vision
 Notre analyse explore la position du Bénin sur l'échiquier international à travers **GDELT 2025**.
